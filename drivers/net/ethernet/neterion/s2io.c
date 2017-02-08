@@ -7301,7 +7301,7 @@ static void s2io_tx_watchdog(struct net_device *dev)
  *   @cksum : FCS checksum of the frame.
  *   @ring_no : the ring from which this RxD was extracted.
  *   Description:
- *   This function is called by the Rx interrupt serivce routine to perform
+ *   This function is called by the Rx interrupt service routine to perform
  *   some OS related operations on the SKB before passing it to the upper
  *   layers. It mainly checks if the checksum is OK, if so adds it to the
  *   SKBs cksum variable, increments the Rx packet count and passes the SKB

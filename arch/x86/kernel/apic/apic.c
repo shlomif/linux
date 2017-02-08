@@ -1316,7 +1316,7 @@ void setup_local_APIC(void)
 	 * Most probably by now CPU has serviced that pending interrupt and
 	 * it might not have done the ack_APIC_irq() because it thought,
 	 * interrupt came from i8259 as ExtInt. LAPIC did not get EOI so it
-	 * does not clear the ISR bit and cpu thinks it has already serivced
+	 * does not clear the ISR bit and cpu thinks it has already serviced
 	 * the interrupt. Hence a vector might get locked. It was noticed
 	 * for timer irq (vector 0x31). Issue an extra EOI to clear ISR.
 	 */
