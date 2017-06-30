@@ -9,6 +9,7 @@
 #include <regex.h>
 #include <sys/utsname.h>
 
+#include "keywords_search.h"
 #include "lkc.h"
 
 struct symbol symbol_yes = {
@@ -1023,6 +1024,13 @@ static int sym_rel_comp(const void *sym1, const void *sym2)
 	return strcmp(s1->sym->name, s2->sym->name);
 }
 
+static int re_search_filter(struct symbol *sym, void *re_void)
+{
+	return (regexec((regex_t *)re_void, sym->name, 0, NULL, 0) == 0);
+}
+
+
+/* The old function that only searches through sym->name. */
 struct symbol **sym_re_search(const char *pattern)
 {
 	struct symbol *sym, **sym_arr = NULL;
@@ -1074,6 +1082,155 @@ sym_re_search_free:
 	regfree(&re);
 
 	return sym_arr;
+}
+
+typedef struct substring_search_context_struct {
+	const char *substring;
+	char *(*find_func)(const char *, const char *);
+} substring_search_context_t;
+
+#define MATCH_SYMBOL() \
+	(MATCH(sym->name) || \
+	(sym->prop && \
+	 ((sym->prop->text && MATCH(sym->prop->text)) || \
+	  (sym->prop->menu && sym->prop->menu->help && \
+	  MATCH(sym->prop->menu->help))) \
+	));
+
+static int substring_filter(struct symbol *sym, void *context_void)
+{
+	substring_search_context_t *context;
+	context = (substring_search_context_t *)context_void;
+
+#define MATCH(string) \
+	(context->find_func((string), context->substring))
+
+	return MATCH_SYMBOL();
+#undef MATCH
+}
+
+/*
+ * A not-so-efficient (but should be good enough) implementation of the
+ * GNU strcasestr extension. This is done because strcasestr is not portable
+ * and the compiler yells at us for using it.
+ * */
+static char *my_strcasestr(const char *haystack, const char *needle)
+{
+	size_t needle_len;
+	char *start_from;
+
+	needle_len = strlen(needle);
+	start_from = (char *)haystack;
+
+	while (*start_from) {
+		if (!strncasecmp(start_from, needle, needle_len))
+			return start_from;
+
+		start_from++;
+	}
+
+	return NULL;
+}
+
+static struct symbol **substring_search(const char *substring, int case_sense)
+{
+	substring_search_context_t context;
+
+	context.substring = substring;
+	context.find_func = case_sense ? strstr: my_strcasestr;
+
+	return sym_generic_search(substring_filter, (void *)&context);
+}
+
+typedef struct {
+	keywords_search_handle_t *h;
+	int case_sense;
+} keywords_search_context_t;
+
+static int keywords_filter(struct symbol *sym, void *context_void)
+{
+	keywords_search_context_t *context;
+	context = (keywords_search_context_t *)context_void;
+
+	keywords_search_reset(context->h);
+
+#define MATCH(string) \
+	(keywords_search_matches(context->h, string, context->case_sense))
+
+	return MATCH_SYMBOL();
+#undef MATCH
+}
+
+static struct symbol **keywords_search(const char *query, int case_sense)
+{
+	struct symbol **results;
+	keywords_search_context_t context;
+
+	context.h = keywords_search_compile(query);
+	if (!context.h)
+		return NULL;
+	context.case_sense = case_sense;
+
+	results = sym_generic_search(keywords_filter, (void *)&context);
+	keywords_search_free(context.h);
+
+	return results;
+}
+
+
+static int re_search2_filter(struct symbol *sym, void *re_void)
+{
+	regex_t *re = (regex_t *)re_void;
+
+#define MATCH(string) \
+	(regexec(re, (string), 0, NULL, 0) == 0)
+
+	return MATCH_SYMBOL();
+#undef MATCH
+}
+
+static struct symbol **sym_re_search2(const char *pattern, int case_sense)
+{
+	regex_t re;
+	struct symbol **results;
+	int rc_flags;
+
+	rc_flags = case_sense ? 0: REG_ICASE;
+
+	if (strlen(pattern) == 0)
+		return NULL;
+	if (regcomp(&re, pattern, REG_EXTENDED|REG_NOSUB|rc_flags))
+		return NULL;
+
+	results = sym_generic_search(re_search2_filter, (void *)&re);
+
+	regfree(&re);
+
+	return results;
+}
+
+
+#undef MATCH_SYMBOL
+
+#define is_case_sensitive(flags) \
+	(((flags) & SYM_PATTERN_CASE_MASK) == SYM_PATTERN_CASE_SENSITIVE)
+
+struct symbol **sym_pattern_search(const char *pattern, unsigned int flags)
+{
+	unsigned int type;
+	int case_sense;
+
+	type = (flags & SYM_PATTERN_SEARCH_TYPE_MASK);
+	case_sense = is_case_sensitive(flags);
+
+	if (type == SYM_PATTERN_SEARCH_REGEX)
+		return sym_re_search2(pattern, case_sense);
+	else if (type == SYM_PATTERN_SEARCH_SUBSTRING)
+		return substring_search(pattern, case_sense);
+	else if (type == SYM_PATTERN_SEARCH_KEYWORDS_AND)
+		return keywords_search(pattern, case_sense);
+	else
+		return NULL;
 }
 
 /*

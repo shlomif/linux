@@ -25,6 +25,7 @@
 #include <qmessagebox.h>
 #include <qregexp.h>
 #include <qevent.h>
+#include <qradiobutton.h>
 
 #include <stdlib.h>
 
@@ -1271,6 +1272,36 @@ ConfigSearchWindow::ConfigSearchWindow(ConfigMainWindow* parent, const char *nam
 	layout2->addWidget(searchButton);
 	layout1->addLayout(layout2);
 
+	// Initialize the "Search Type" button group.
+	searchType = new Q3VButtonGroup("Search Type", this, "searchType");
+
+	searchType->insert(new QRadioButton("Substring Match", searchType),
+			SYM_PATTERN_SEARCH_SUBSTRING
+			);
+
+	searchType->insert(new QRadioButton("Keywords", searchType),
+			SYM_PATTERN_SEARCH_KEYWORDS_AND
+			);
+
+	searchType->insert(new QRadioButton("Regular Expression", searchType),
+			SYM_PATTERN_SEARCH_REGEX
+			);
+
+	searchType->setButton(SYM_PATTERN_SEARCH_SUBSTRING);
+	layout1->addWidget(searchType);
+
+	// Initialize the "Options" button group.
+	options = new Q3VButtonGroup("Options", this, "Options");
+
+	caseSensitivity = new QCheckBox(
+			"Case sensitive", options, "Case sensitive"
+			);
+
+	caseSensitivity->setChecked(FALSE);
+
+	layout1->addWidget(options);
+
+	// Initialize the ConfigView and ConfigInfoView
 	split = new QSplitter(this);
 	split->setOrientation(Qt::Vertical);
 	list = new ConfigView(split, name);
@@ -1317,6 +1348,17 @@ void ConfigSearchWindow::saveSettings(void)
 	}
 }
 
+unsigned int ConfigSearchWindow::getSearchFlags()
+{
+	return (searchType->selectedId()
+			|
+		(caseSensitivity->isChecked()
+		 ? SYM_PATTERN_CASE_SENSITIVE
+		 : SYM_PATTERN_CASE_INSENSITIVE
+		)
+	       );
+}
+
 void ConfigSearchWindow::search(void)
 {
 	struct symbol **p;
@@ -1327,7 +1369,7 @@ void ConfigSearchWindow::search(void)
 	list->list->clear();
 	info->clear();
 
-	result = sym_re_search(editField->text().toLatin1());
+	result = sym_pattern_search(editField->text(), getSearchFlags());
 	if (!result)
 		return;
 	for (p = result; *p; p++) {

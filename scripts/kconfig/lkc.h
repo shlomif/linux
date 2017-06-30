@@ -143,6 +143,20 @@ struct property *prop_alloc(enum prop_type type, struct symbol *sym);
 struct symbol *prop_get_symbol(struct property *prop);
 struct property *sym_get_env_prop(struct symbol *sym);
 
+typedef int (*sym_search_filter_t)(struct symbol *sym, void *context);
+struct symbol **sym_generic_search(sym_search_filter_t filter, void *context);
+struct symbol **sym_pattern_search(const char *pattern, unsigned int flags);
+
+enum SYM_PATTERN_SEARCH_FLAGS {
+	SYM_PATTERN_SEARCH_REGEX         =  0x0,
+	SYM_PATTERN_SEARCH_SUBSTRING     =  0x1,
+	SYM_PATTERN_SEARCH_KEYWORDS_AND  =  0x2,
+	SYM_PATTERN_SEARCH_TYPE_MASK     =  0xF,
+	SYM_PATTERN_CASE_SENSITIVE       = 0x10,
+	SYM_PATTERN_CASE_INSENSITIVE     = 0x00,
+	SYM_PATTERN_CASE_MASK            = 0x10,
+};
+
 static inline tristate sym_get_tristate_value(struct symbol *sym)
 {
 	return sym->curr.tri;

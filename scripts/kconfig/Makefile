@@ -180,13 +180,13 @@ HOST_EXTRACFLAGS += $(shell $(CONFIG_SHELL) $(check-lxdialog) -ccflags) \
 lxdialog := lxdialog/checklist.o lxdialog/util.o lxdialog/inputbox.o
 lxdialog += lxdialog/textbox.o lxdialog/yesno.o lxdialog/menubox.o
 
-conf-objs	:= conf.o  zconf.tab.o
-mconf-objs     := mconf.o zconf.tab.o $(lxdialog)
-nconf-objs     := nconf.o zconf.tab.o nconf.gui.o
-kxgettext-objs	:= kxgettext.o zconf.tab.o
+conf-objs	:= conf.o  zconf.tab.o keywords_search.o
+mconf-objs     := mconf.o zconf.tab.o keywords_search.o $(lxdialog)
+nconf-objs     := nconf.o zconf.tab.o keywords_search.o nconf.gui.o
+kxgettext-objs	:= kxgettext.o zconf.tab.o keywords_search.o
 qconf-cxxobjs	:= qconf.o
-qconf-objs	:= zconf.tab.o
-gconf-objs	:= gconf.o zconf.tab.o
+qconf-objs	:= zconf.tab.o keywords_search.o
+gconf-objs	:= gconf.o zconf.tab.o keywords_search.o
 
 hostprogs-y := conf nconf mconf kxgettext qconf gconf
 

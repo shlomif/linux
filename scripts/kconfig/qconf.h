@@ -12,6 +12,7 @@
 #include <QSettings>
 #include <QLineEdit>
 #include <QSplitter>
+#include <Q3VButtonGroup>
 #include <QCheckBox>
 #include <QDialog>
 #include "expr.h"
@@ -268,6 +269,7 @@ protected:
 	bool _showDebug;
 };
 
+enum SEARCH_TYPE { SUBSTRING, KEYWORDS, REGEX };
 class ConfigSearchWindow : public QDialog {
 	Q_OBJECT
 	typedef class QDialog Parent;
@@ -281,11 +283,15 @@ public slots:
 protected:
 	QLineEdit* editField;
 	QPushButton* searchButton;
+	Q3VButtonGroup *searchType, *options;
+	QCheckBox *caseSensitivity;
 	QSplitter* split;
 	ConfigView* list;
 	ConfigInfoView* info;
 
 	struct symbol **result;
+
+	unsigned int getSearchFlags();
 };
 
 class ConfigMainWindow : public QMainWindow {
@@ -328,3 +334,4 @@ protected:
 	QSplitter *split1;
 	QSplitter *split2;
 };
+
