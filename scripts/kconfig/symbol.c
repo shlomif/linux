@@ -1233,6 +1233,36 @@ struct symbol **sym_pattern_search(const char *pattern, unsigned int flags)
 		return NULL;
 }
 
+struct symbol **sym_generic_search(sym_search_filter_t filter, void *context)
+{
+	struct symbol *sym, **sym_arr = NULL;
+	int i, cnt, size;
+
+	cnt = size = 0;
+
+	for_all_symbols(i, sym) {
+		if (sym->flags & SYMBOL_CONST || !sym->name)
+			continue;
+		if (!filter(sym, context))
+			continue;
+		if (cnt + 1 >= size) {
+			void *tmp = sym_arr;
+			size += 16;
+			sym_arr = realloc(sym_arr, size * sizeof(struct symbol *));
+			if (!sym_arr) {
+				free(tmp);
+				return NULL;
+			}
+		}
+		sym_calc_value(sym);
+		sym_arr[cnt++] = sym;
+	}
+	if (sym_arr)
+		sym_arr[cnt] = NULL;
+
+	return sym_arr;
+}
+
 /*
  * When we check for recursive dependencies we use a stack to save
  * current state so we can print out relevant info to user.
