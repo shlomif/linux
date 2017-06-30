@@ -3,11 +3,11 @@
  *
  * Copyrighted by Shlomi Fish, 2007.
  *
- * Licensed under the MIT/X11 License:
+ * Licensed under the MIT/Expat License:
  *
  * http://www.opensource.org/licenses/mit-license.php
  *
- * */
+ */
 #include "keywords_search.h"
 #include <string.h>
 #include <stdlib.h>
@@ -26,6 +26,7 @@ static int add_word(keywords_search_handle_t *h, const char **p)
 
 	if (h->num_words == h->max_num_words) {
 		void *new_ptr;
+
 		h->max_num_words += 16;
 		new_ptr = realloc(h->words,
 			sizeof(h->words[0]) * h->max_num_words

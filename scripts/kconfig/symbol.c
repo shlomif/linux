@@ -1095,11 +1095,12 @@ typedef struct substring_search_context_struct {
 	 ((sym->prop->text && MATCH(sym->prop->text)) || \
 	  (sym->prop->menu && sym->prop->menu->help && \
 	  MATCH(sym->prop->menu->help))) \
-	));
+	))
 
 static int substring_filter(struct symbol *sym, void *context_void)
 {
 	substring_search_context_t *context;
+
 	context = (substring_search_context_t *)context_void;
 
 #define MATCH(string) \
@@ -1113,7 +1114,7 @@ static int substring_filter(struct symbol *sym, void *context_void)
  * A not-so-efficient (but should be good enough) implementation of the
  * GNU strcasestr extension. This is done because strcasestr is not portable
  * and the compiler yells at us for using it.
- * */
+ */
 static char *my_strcasestr(const char *haystack, const char *needle)
 {
 	size_t needle_len;
@@ -1150,6 +1151,7 @@ typedef struct {
 static int keywords_filter(struct symbol *sym, void *context_void)
 {
 	keywords_search_context_t *context;
+
 	context = (keywords_search_context_t *)context_void;
 
 	keywords_search_reset(context->h);
@@ -1247,8 +1249,10 @@ struct symbol **sym_generic_search(sym_search_filter_t filter, void *context)
 			continue;
 		if (cnt + 1 >= size) {
 			void *tmp = sym_arr;
+
 			size += 16;
-			sym_arr = realloc(sym_arr, size * sizeof(struct symbol *));
+			sym_arr = realloc(sym_arr,
+				size * sizeof(struct symbol *));
 			if (!sym_arr) {
 				free(tmp);
 				return NULL;

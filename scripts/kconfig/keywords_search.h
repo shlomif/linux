@@ -3,11 +3,11 @@
  *
  * Copyrighted by Shlomi Fish, 2007.
  *
- * Licensed under the MIT/X11 License:
+ * Licensed under the MIT/Expat License:
  *
  * http://www.opensource.org/licenses/mit-license.php
  *
- * */
+ */
 #ifndef KEYWORDS_SEARCH_H
 #define KEYWORDS_SEARCH_H
 

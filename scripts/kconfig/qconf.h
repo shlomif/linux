@@ -293,7 +293,7 @@ protected:
 
 	struct symbol **result;
 
-	unsigned int getSearchFlags();
+	unsigned int getSearchFlags(void);
 };
 
 class ConfigMainWindow : public QMainWindow {
