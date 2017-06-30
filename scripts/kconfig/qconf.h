@@ -12,7 +12,7 @@
 #include <QSettings>
 #include <QLineEdit>
 #include <QSplitter>
-#include <Q3VButtonGroup>
+#include <QGroupBox>
 #include <QCheckBox>
 #include <QDialog>
 #include "expr.h"
@@ -283,7 +283,9 @@ public slots:
 protected:
 	QLineEdit* editField;
 	QPushButton* searchButton;
-	Q3VButtonGroup *searchType, *options;
+	QGroupBox *searchType, *options;
+	QRadioButton *searchTypeKeywords, *searchTypeRegex,
+		     *searchTypeSubstring;
 	QCheckBox *caseSensitivity;
 	QSplitter* split;
 	ConfigView* list;

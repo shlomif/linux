@@ -1273,31 +1273,31 @@ ConfigSearchWindow::ConfigSearchWindow(ConfigMainWindow* parent, const char *nam
 	layout1->addLayout(layout2);
 
 	// Initialize the "Search Type" button group.
-	searchType = new Q3VButtonGroup("Search Type", this, "searchType");
+	searchType = new QGroupBox(_("Search Type"), this);
 
-	searchType->insert(new QRadioButton("Substring Match", searchType),
-			SYM_PATTERN_SEARCH_SUBSTRING
-			);
+	searchTypeSubstring = new QRadioButton( _("Substring Match"));
+			// SYM_PATTERN_SEARCH_SUBSTRING
 
-	searchType->insert(new QRadioButton("Keywords", searchType),
-			SYM_PATTERN_SEARCH_KEYWORDS_AND
-			);
+	searchTypeKeywords = new QRadioButton(_("Keywords"));
+			// SYM_PATTERN_SEARCH_KEYWORDS_AND
+	searchTypeRegex = new QRadioButton(_("Regular Expression"));
+			// SYM_PATTERN_SEARCH_REGEX
 
-	searchType->insert(new QRadioButton("Regular Expression", searchType),
-			SYM_PATTERN_SEARCH_REGEX
-			);
-
-	searchType->setButton(SYM_PATTERN_SEARCH_SUBSTRING);
+	searchTypeSubstring->setChecked(true);
+	QVBoxLayout *vbox = new QVBoxLayout;
+	vbox->addWidget(searchTypeSubstring);
+	vbox->addWidget(searchTypeKeywords);
+	vbox->addWidget(searchTypeRegex);
+	vbox->addStretch(1);
+	searchType->setLayout(vbox);
 	layout1->addWidget(searchType);
 
 	// Initialize the "Options" button group.
-	options = new Q3VButtonGroup("Options", this, "Options");
+	options = new QGroupBox("Options", this);
 
-	caseSensitivity = new QCheckBox(
-			"Case sensitive", options, "Case sensitive"
-			);
+	caseSensitivity = new QCheckBox(_("Case sensitive"), options);
 
-	caseSensitivity->setChecked(FALSE);
+	caseSensitivity->setChecked(false);
 
 	layout1->addWidget(options);
 
@@ -1350,7 +1350,12 @@ void ConfigSearchWindow::saveSettings(void)
 
 unsigned int ConfigSearchWindow::getSearchFlags()
 {
-	return (searchType->selectedId()
+	return ((searchTypeSubstring->isChecked()
+	    ? SYM_PATTERN_SEARCH_SUBSTRING
+	    : searchTypeKeywords->isChecked()
+	    ? SYM_PATTERN_SEARCH_KEYWORDS_AND
+	    : SYM_PATTERN_SEARCH_REGEX
+	)
 			|
 		(caseSensitivity->isChecked()
 		 ? SYM_PATTERN_CASE_SENSITIVE
@@ -1369,7 +1374,8 @@ void ConfigSearchWindow::search(void)
 	list->list->clear();
 	info->clear();
 
-	result = sym_pattern_search(editField->text(), getSearchFlags());
+	result = sym_pattern_search(editField->text().toLatin1(),
+		getSearchFlags());
 	if (!result)
 		return;
 	for (p = result; *p; p++) {
