@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  *  linux/arch/parisc/mm/init.c
  *
@@ -13,12 +14,10 @@
 
 #include <linux/module.h>
 #include <linux/mm.h>
-#include <linux/bootmem.h>
 #include <linux/memblock.h>
 #include <linux/gfp.h>
 #include <linux/delay.h>
 #include <linux/init.h>
-#include <linux/pci.h>		/* for hppa_dma_ops and pcxl_dma_ops */
 #include <linux/initrd.h>
 #include <linux/swap.h>
 #include <linux/unistd.h>
@@ -79,36 +78,6 @@ static struct resource sysram_resources[MAX_PHYSMEM_RANGES] __read_mostly;
 
 physmem_range_t pmem_ranges[MAX_PHYSMEM_RANGES] __read_mostly;
 int npmem_ranges __read_mostly;
-
-/*
- * get_memblock() allocates pages via memblock.
- * We can't use memblock_find_in_range(0, KERNEL_INITIAL_SIZE) here since it
- * doesn't allocate from bottom to top which is needed because we only created
- * the initial mapping up to KERNEL_INITIAL_SIZE in the assembly bootup code.
- */
-static void * __init get_memblock(unsigned long size)
-{
-	static phys_addr_t search_addr __initdata;
-	phys_addr_t phys;
-
-	if (!search_addr)
-		search_addr = PAGE_ALIGN(__pa((unsigned long) &_end));
-	search_addr = ALIGN(search_addr, size);
-	while (!memblock_is_region_memory(search_addr, size) ||
-		memblock_is_region_reserved(search_addr, size)) {
-		search_addr += size;
-	}
-	phys = search_addr;
-
-	if (phys)
-		memblock_reserve(phys, size);
-	else
-		panic("get_memblock() failed.\n");
-
-	memset(__va(phys), 0, size);
-
-	return __va(phys);
-}
 
 #ifdef CONFIG_64BIT
 #define MAX_MEM         (~0UL)
@@ -322,6 +291,13 @@ static void __init setup_bootmem(void)
 			max_pfn = start_pfn + npages;
 	}
 
+	/*
+	 * We can't use memblock top-down allocations because we only
+	 * created the initial mapping up to KERNEL_INITIAL_SIZE in
+	 * the assembly bootup code.
+	 */
+	memblock_set_bottom_up(true);
+
 	/* IOMMU is always used to access "high mem" on those boxes
 	 * that can support enough mem that a PCI device couldn't
 	 * directly DMA to any physical addresses.
@@ -381,6 +357,9 @@ static void __init setup_bootmem(void)
 		request_resource(res, &data_resource);
 	}
 	request_resource(&sysram_resources[0], &pdcdata_resource);
+
+	/* Initialize Page Deallocation Table (PDT) and check for bad memory. */
+	pdc_pdt_init();
 }
 
 static int __init parisc_text_address(unsigned long vaddr)
@@ -440,7 +419,10 @@ static void __init map_pages(unsigned long start_vaddr,
 		 */
 
 		if (!pmd) {
-			pmd = (pmd_t *) get_memblock(PAGE_SIZE << PMD_ORDER);
+			pmd = memblock_alloc(PAGE_SIZE << PMD_ORDER,
+					     PAGE_SIZE << PMD_ORDER);
+			if (!pmd)
+				panic("pmd allocation failed.\n");
 			pmd = (pmd_t *) __pa(pmd);
 		}
 
@@ -459,7 +441,10 @@ static void __init map_pages(unsigned long start_vaddr,
 
 			pg_table = (pte_t *)pmd_address(*pmd);
 			if (!pg_table) {
-				pg_table = (pte_t *) get_memblock(PAGE_SIZE);
+				pg_table = memblock_alloc(PAGE_SIZE,
+							  PAGE_SIZE);
+				if (!pg_table)
+					panic("page table allocation failed\n");
 				pg_table = (pte_t *) __pa(pg_table);
 			}
 
@@ -491,12 +476,8 @@ static void __init map_pages(unsigned long start_vaddr,
 						pte = pte_mkhuge(pte);
 				}
 
-				if (address >= end_paddr) {
-					if (force)
-						break;
-					else
-						pte_val(pte) = 0;
-				}
+				if (address >= end_paddr)
+					break;
 
 				set_pte(pg_table, pte);
 
@@ -512,7 +493,20 @@ static void __init map_pages(unsigned long start_vaddr,
 	}
 }
 
-void free_initmem(void)
+void __init set_kernel_text_rw(int enable_read_write)
+{
+	unsigned long start = (unsigned long) _text;
+	unsigned long end   = (unsigned long) &data_start;
+
+	map_pages(start, __pa(start), end-start,
+		PAGE_KERNEL_RWX, enable_read_write ? 1:0);
+
+	/* force the kernel to see the new page table entries */
+	flush_cache_all();
+	flush_tlb_all();
+}
+
+void __ref free_initmem(void)
 {
 	unsigned long init_begin = (unsigned long)__init_begin;
 	unsigned long init_end = (unsigned long)__init_end;
@@ -609,29 +603,30 @@ void __init mem_init(void)
 
 	high_memory = __va((max_pfn << PAGE_SHIFT));
 	set_max_mapnr(page_to_pfn(virt_to_page(high_memory - 1)) + 1);
-	free_all_bootmem();
+	memblock_free_all();
 
 #ifdef CONFIG_PA11
-	if (hppa_dma_ops == &pcxl_dma_ops) {
+	if (boot_cpu_data.cpu_type == pcxl2 || boot_cpu_data.cpu_type == pcxl) {
 		pcxl_dma_start = (unsigned long)SET_MAP_OFFSET(MAP_START);
 		parisc_vmalloc_start = SET_MAP_OFFSET(pcxl_dma_start
 						+ PCXL_DMA_MAP_SIZE);
-	} else {
-		pcxl_dma_start = 0;
-		parisc_vmalloc_start = SET_MAP_OFFSET(MAP_START);
-	}
-#else
-	parisc_vmalloc_start = SET_MAP_OFFSET(MAP_START);
+	} else
 #endif
+		parisc_vmalloc_start = SET_MAP_OFFSET(MAP_START);
 
 	mem_init_print_info(NULL);
-#ifdef CONFIG_DEBUG_KERNEL /* double-sanity-check paranoia */
+
+#if 0
+	/*
+	 * Do not expose the virtual kernel memory layout to userspace.
+	 * But keep code for debugging purposes.
+	 */
 	printk("virtual kernel memory layout:\n"
-	       "    vmalloc : 0x%p - 0x%p   (%4ld MB)\n"
-	       "    memory  : 0x%p - 0x%p   (%4ld MB)\n"
-	       "      .init : 0x%p - 0x%p   (%4ld kB)\n"
-	       "      .data : 0x%p - 0x%p   (%4ld kB)\n"
-	       "      .text : 0x%p - 0x%p   (%4ld kB)\n",
+	       "    vmalloc : 0x%px - 0x%px   (%4ld MB)\n"
+	       "    memory  : 0x%px - 0x%px   (%4ld MB)\n"
+	       "      .init : 0x%px - 0x%px   (%4ld kB)\n"
+	       "      .data : 0x%px - 0x%px   (%4ld kB)\n"
+	       "      .text : 0x%px - 0x%px   (%4ld kB)\n",
 
 	       (void*)VMALLOC_START, (void*)VMALLOC_END,
 	       (VMALLOC_END - VMALLOC_START) >> 20,
@@ -688,7 +683,10 @@ static void __init pagetable_init(void)
 	}
 #endif
 
-	empty_zero_page = get_memblock(PAGE_SIZE);
+	empty_zero_page = memblock_alloc(PAGE_SIZE, PAGE_SIZE);
+	if (!empty_zero_page)
+		panic("zero page allocation failed.\n");
+
 }
 
 static void __init gateway_init(void)

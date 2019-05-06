@@ -58,6 +58,7 @@ static void *cxgbit_uld_add(const struct cxgb4_lld_info *lldi)
 		return ERR_PTR(-ENOMEM);
 
 	kref_init(&cdev->kref);
+	spin_lock_init(&cdev->np_lock);
 
 	cdev->lldi = *lldi;
 
@@ -446,6 +447,7 @@ cxgbit_uld_lro_rx_handler(void *hndl, const __be64 *rsp,
 	case CPL_RX_ISCSI_DDP:
 	case CPL_FW4_ACK:
 		lro_flush = false;
+		/* fall through */
 	case CPL_ABORT_RPL_RSS:
 	case CPL_PASS_ESTABLISH:
 	case CPL_PEER_CLOSE:
@@ -676,7 +678,7 @@ static struct iscsit_transport cxgbit_transport = {
 	.iscsit_get_r2t_ttt	= cxgbit_get_r2t_ttt,
 	.iscsit_get_rx_pdu	= cxgbit_get_rx_pdu,
 	.iscsit_validate_params	= cxgbit_validate_params,
-	.iscsit_release_cmd	= cxgbit_release_cmd,
+	.iscsit_unmap_cmd	= cxgbit_unmap_cmd,
 	.iscsit_aborted_task	= iscsit_aborted_task,
 	.iscsit_get_sup_prot_ops = cxgbit_get_sup_prot_ops,
 };

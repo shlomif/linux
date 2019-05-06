@@ -43,7 +43,7 @@ int rt2x00mmio_regbusy_read(struct rt2x00_dev *rt2x00dev,
 		return 0;
 
 	for (i = 0; i < REGISTER_BUSY_COUNT; i++) {
-		rt2x00mmio_register_read(rt2x00dev, offset, reg);
+		*reg = rt2x00mmio_register_read(rt2x00dev, offset);
 		if (!rt2x00_get_field32(*reg, field))
 			return 1;
 		udelay(REGISTER_BUSY_DELAY);
@@ -119,9 +119,9 @@ static int rt2x00mmio_alloc_queue_dma(struct rt2x00_dev *rt2x00dev,
 	/*
 	 * Allocate DMA memory for descriptor and buffer.
 	 */
-	addr = dma_zalloc_coherent(rt2x00dev->dev,
-				   queue->limit * queue->desc_size, &dma,
-				   GFP_KERNEL);
+	addr = dma_alloc_coherent(rt2x00dev->dev,
+				  queue->limit * queue->desc_size, &dma,
+				  GFP_KERNEL);
 	if (!addr)
 		return -ENOMEM;
 

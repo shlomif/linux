@@ -49,7 +49,6 @@
 
 #define RTC_CALIB_DEF		0x198233
 #define RTC_CALIB_MASK		0x1FFFFF
-#define RTC_SEC_MAX_VAL		0xFFFFFFFF
 
 struct xlnx_rtc_dev {
 	struct rtc_device	*rtc;
@@ -70,9 +69,6 @@ static int xlnx_rtc_set_time(struct device *dev, struct rtc_time *tm)
 	 * to get the correct time on read.
 	 */
 	new_time = rtc_tm_to_time64(tm) + 1;
-
-	if (new_time > RTC_SEC_MAX_VAL)
-		return -EINVAL;
 
 	/*
 	 * Writing into calibration register will clear the Tick Counter and
@@ -122,7 +118,7 @@ static int xlnx_rtc_read_time(struct device *dev, struct rtc_time *tm)
 		rtc_time64_to_tm(read_time, tm);
 	}
 
-	return rtc_valid_tm(tm);
+	return 0;
 }
 
 static int xlnx_rtc_read_alarm(struct device *dev, struct rtc_wkalrm *alrm)
@@ -153,9 +149,6 @@ static int xlnx_rtc_set_alarm(struct device *dev, struct rtc_wkalrm *alrm)
 	unsigned long alarm_time;
 
 	alarm_time = rtc_tm_to_time64(&alrm->time);
-
-	if (alarm_time > RTC_SEC_MAX_VAL)
-		return -EINVAL;
 
 	writel((u32)alarm_time, (xrtcdev->reg_base + RTC_ALRM));
 
@@ -222,6 +215,13 @@ static int xlnx_rtc_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, xrtcdev);
 
+	xrtcdev->rtc = devm_rtc_allocate_device(&pdev->dev);
+	if (IS_ERR(xrtcdev->rtc))
+		return PTR_ERR(xrtcdev->rtc);
+
+	xrtcdev->rtc->ops = &xlnx_rtc_ops;
+	xrtcdev->rtc->range_max = U32_MAX;
+
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 
 	xrtcdev->reg_base = devm_ioremap_resource(&pdev->dev, res);
@@ -263,9 +263,7 @@ static int xlnx_rtc_probe(struct platform_device *pdev)
 
 	device_init_wakeup(&pdev->dev, 1);
 
-	xrtcdev->rtc = devm_rtc_device_register(&pdev->dev, pdev->name,
-					 &xlnx_rtc_ops, THIS_MODULE);
-	return PTR_ERR_OR_ZERO(xrtcdev->rtc);
+	return rtc_register_device(xrtcdev->rtc);
 }
 
 static int xlnx_rtc_remove(struct platform_device *pdev)
@@ -278,10 +276,9 @@ static int xlnx_rtc_remove(struct platform_device *pdev)
 
 static int __maybe_unused xlnx_rtc_suspend(struct device *dev)
 {
-	struct platform_device *pdev = to_platform_device(dev);
-	struct xlnx_rtc_dev *xrtcdev = platform_get_drvdata(pdev);
+	struct xlnx_rtc_dev *xrtcdev = dev_get_drvdata(dev);
 
-	if (device_may_wakeup(&pdev->dev))
+	if (device_may_wakeup(dev))
 		enable_irq_wake(xrtcdev->alarm_irq);
 	else
 		xlnx_rtc_alarm_irq_enable(dev, 0);
@@ -291,10 +288,9 @@ static int __maybe_unused xlnx_rtc_suspend(struct device *dev)
 
 static int __maybe_unused xlnx_rtc_resume(struct device *dev)
 {
-	struct platform_device *pdev = to_platform_device(dev);
-	struct xlnx_rtc_dev *xrtcdev = platform_get_drvdata(pdev);
+	struct xlnx_rtc_dev *xrtcdev = dev_get_drvdata(dev);
 
-	if (device_may_wakeup(&pdev->dev))
+	if (device_may_wakeup(dev))
 		disable_irq_wake(xrtcdev->alarm_irq);
 	else
 		xlnx_rtc_alarm_irq_enable(dev, 1);

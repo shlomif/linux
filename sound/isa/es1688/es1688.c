@@ -260,7 +260,6 @@ static int snd_es968_pnp_detect(struct pnp_card_link *pcard,
 	struct snd_card *card;
 	static unsigned int dev;
 	int error;
-	struct snd_es1688 *chip;
 
 	if (snd_es968_pnp_is_probed)
 		return -EBUSY;
@@ -276,7 +275,6 @@ static int snd_es968_pnp_detect(struct pnp_card_link *pcard,
 			     sizeof(struct snd_es1688), &card);
 	if (error < 0)
 		return error;
-	chip = card->private_data;
 
 	error = snd_card_es968_pnp(card, dev, pcard, pid);
 	if (error < 0) {
@@ -303,10 +301,8 @@ static int snd_es968_pnp_suspend(struct pnp_card_link *pcard,
 				 pm_message_t state)
 {
 	struct snd_card *card = pnp_get_card_drvdata(pcard);
-	struct snd_es1688 *chip = card->private_data;
 
 	snd_power_change_state(card, SNDRV_CTL_POWER_D3hot);
-	snd_pcm_suspend_all(chip->pcm);
 	return 0;
 }
 
@@ -321,7 +317,7 @@ static int snd_es968_pnp_resume(struct pnp_card_link *pcard)
 }
 #endif
 
-static struct pnp_card_device_id snd_es968_pnpids[] = {
+static const struct pnp_card_device_id snd_es968_pnpids[] = {
 	{ .id = "ESS0968", .devs = { { "@@@0968" }, } },
 	{ .id = "ESS0968", .devs = { { "ESS0968" }, } },
 	{ .id = "", } /* end */

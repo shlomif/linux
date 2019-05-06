@@ -65,7 +65,7 @@ char *arc_cache_mumbojumbo(int c, char *buf, int len)
 
 	n += scnprintf(buf + n, len - n, "Peripherals\t: %#lx%s%s\n",
 		       perip_base,
-		       IS_AVAIL3(ioc_exists, ioc_enable, ", IO-Coherency "));
+		       IS_AVAIL3(ioc_exists, ioc_enable, ", IO-Coherency (per-device) "));
 
 	return buf;
 }
@@ -113,10 +113,24 @@ static void read_decode_cache_bcr_arcv2(int cpu)
 	}
 
 	READ_BCR(ARC_REG_CLUSTER_BCR, cbcr);
-	if (cbcr.c)
+	if (cbcr.c) {
 		ioc_exists = 1;
-	else
+
+		/*
+		 * As for today we don't support both IOC and ZONE_HIGHMEM enabled
+		 * simultaneously. This happens because as of today IOC aperture covers
+		 * only ZONE_NORMAL (low mem) and any dma transactions outside this
+		 * region won't be HW coherent.
+		 * If we want to use both IOC and ZONE_HIGHMEM we can use
+		 * bounce_buffer to handle dma transactions to HIGHMEM.
+		 * Also it is possible to modify dma_direct cache ops or increase IOC
+		 * aperture size if we are planning to use HIGHMEM without PAE.
+		 */
+		if (IS_ENABLED(CONFIG_HIGHMEM) || is_pae40_enabled())
+			ioc_enable = 0;
+	} else {
 		ioc_enable = 0;
+	}
 
 	/* HS 2.0 didn't have AUX_VOL */
 	if (cpuinfo_arc700[cpu].core.family > 0x51) {
@@ -652,7 +666,7 @@ static void __ic_line_inv_vaddr(phys_addr_t paddr, unsigned long vaddr,
 
 #endif /* CONFIG_ARC_HAS_ICACHE */
 
-noinline void slc_op(phys_addr_t paddr, unsigned long sz, const int op)
+noinline void slc_op_rgn(phys_addr_t paddr, unsigned long sz, const int op)
 {
 #ifdef CONFIG_ISA_ARCV2
 	/*
@@ -665,6 +679,7 @@ noinline void slc_op(phys_addr_t paddr, unsigned long sz, const int op)
 	static DEFINE_SPINLOCK(lock);
 	unsigned long flags;
 	unsigned int ctrl;
+	phys_addr_t end;
 
 	spin_lock_irqsave(&lock, flags);
 
@@ -694,14 +709,77 @@ noinline void slc_op(phys_addr_t paddr, unsigned long sz, const int op)
 	 * END needs to be setup before START (latter triggers the operation)
 	 * END can't be same as START, so add (l2_line_sz - 1) to sz
 	 */
-	write_aux_reg(ARC_REG_SLC_RGN_END, (paddr + sz + l2_line_sz - 1));
-	write_aux_reg(ARC_REG_SLC_RGN_START, paddr);
+	end = paddr + sz + l2_line_sz - 1;
+	if (is_pae40_enabled())
+		write_aux_reg(ARC_REG_SLC_RGN_END1, upper_32_bits(end));
+
+	write_aux_reg(ARC_REG_SLC_RGN_END, lower_32_bits(end));
+
+	if (is_pae40_enabled())
+		write_aux_reg(ARC_REG_SLC_RGN_START1, upper_32_bits(paddr));
+
+	write_aux_reg(ARC_REG_SLC_RGN_START, lower_32_bits(paddr));
+
+	/* Make sure "busy" bit reports correct stataus, see STAR 9001165532 */
+	read_aux_reg(ARC_REG_SLC_CTRL);
 
 	while (read_aux_reg(ARC_REG_SLC_CTRL) & SLC_CTRL_BUSY);
 
 	spin_unlock_irqrestore(&lock, flags);
 #endif
 }
+
+noinline void slc_op_line(phys_addr_t paddr, unsigned long sz, const int op)
+{
+#ifdef CONFIG_ISA_ARCV2
+	/*
+	 * SLC is shared between all cores and concurrent aux operations from
+	 * multiple cores need to be serialized using a spinlock
+	 * A concurrent operation can be silently ignored and/or the old/new
+	 * operation can remain incomplete forever (lockup in SLC_CTRL_BUSY loop
+	 * below)
+	 */
+	static DEFINE_SPINLOCK(lock);
+
+	const unsigned long SLC_LINE_MASK = ~(l2_line_sz - 1);
+	unsigned int ctrl, cmd;
+	unsigned long flags;
+	int num_lines;
+
+	spin_lock_irqsave(&lock, flags);
+
+	ctrl = read_aux_reg(ARC_REG_SLC_CTRL);
+
+	/* Don't rely on default value of IM bit */
+	if (!(op & OP_FLUSH))		/* i.e. OP_INV */
+		ctrl &= ~SLC_CTRL_IM;	/* clear IM: Disable flush before Inv */
+	else
+		ctrl |= SLC_CTRL_IM;
+
+	write_aux_reg(ARC_REG_SLC_CTRL, ctrl);
+
+	cmd = op & OP_INV ? ARC_AUX_SLC_IVDL : ARC_AUX_SLC_FLDL;
+
+	sz += paddr & ~SLC_LINE_MASK;
+	paddr &= SLC_LINE_MASK;
+
+	num_lines = DIV_ROUND_UP(sz, l2_line_sz);
+
+	while (num_lines-- > 0) {
+		write_aux_reg(cmd, paddr);
+		paddr += l2_line_sz;
+	}
+
+	/* Make sure "busy" bit reports correct stataus, see STAR 9001165532 */
+	read_aux_reg(ARC_REG_SLC_CTRL);
+
+	while (read_aux_reg(ARC_REG_SLC_CTRL) & SLC_CTRL_BUSY);
+
+	spin_unlock_irqrestore(&lock, flags);
+#endif
+}
+
+#define slc_op(paddr, sz, op)	slc_op_rgn(paddr, sz, op)
 
 noinline static void slc_entire_op(const int op)
 {
@@ -716,7 +794,10 @@ noinline static void slc_entire_op(const int op)
 
 	write_aux_reg(r, ctrl);
 
-	write_aux_reg(ARC_REG_SLC_INVALIDATE, 1);
+	if (op & OP_INV)	/* Inv or flush-n-inv use same cmd reg */
+		write_aux_reg(ARC_REG_SLC_INVALIDATE, 0x1);
+	else
+		write_aux_reg(ARC_REG_SLC_FLUSH, 0x1);
 
 	/* Make sure "busy" bit reports correct stataus, see STAR 9001165532 */
 	read_aux_reg(r);
@@ -766,7 +847,7 @@ void flush_dcache_page(struct page *page)
 	}
 
 	/* don't handle anon pages here */
-	mapping = page_mapping(page);
+	mapping = page_mapping_file(page);
 	if (!mapping)
 		return;
 
@@ -828,15 +909,6 @@ static void __dma_cache_wback_slc(phys_addr_t start, unsigned long sz)
 	__dc_line_op_k(start, sz, OP_FLUSH);
 	slc_op(start, sz, OP_FLUSH);
 }
-
-/*
- * DMA ops for systems with IOC
- * IOC hardware snoops all DMA traffic keeping the caches consistent with
- * memory - eliding need for any explicit cache maintenance of DMA buffers
- */
-static void __dma_cache_wback_inv_ioc(phys_addr_t start, unsigned long sz) {}
-static void __dma_cache_inv_ioc(phys_addr_t start, unsigned long sz) {}
-static void __dma_cache_wback_ioc(phys_addr_t start, unsigned long sz) {}
 
 /*
  * Exported DMA API
@@ -971,7 +1043,7 @@ void flush_cache_mm(struct mm_struct *mm)
 void flush_cache_page(struct vm_area_struct *vma, unsigned long u_vaddr,
 		      unsigned long pfn)
 {
-	unsigned int paddr = pfn << PAGE_SHIFT;
+	phys_addr_t paddr = pfn << PAGE_SHIFT;
 
 	u_vaddr &= PAGE_MASK;
 
@@ -991,8 +1063,9 @@ void flush_anon_page(struct vm_area_struct *vma, struct page *page,
 		     unsigned long u_vaddr)
 {
 	/* TBD: do we really need to clear the kernel mapping */
-	__flush_dcache_page(page_address(page), u_vaddr);
-	__flush_dcache_page(page_address(page), page_address(page));
+	__flush_dcache_page((phys_addr_t)page_address(page), u_vaddr);
+	__flush_dcache_page((phys_addr_t)page_address(page),
+			    (phys_addr_t)page_address(page));
 
 }
 
@@ -1083,7 +1156,21 @@ SYSCALL_DEFINE3(cacheflush, uint32_t, start, uint32_t, sz, uint32_t, flags)
  */
 noinline void __init arc_ioc_setup(void)
 {
-	unsigned int ap_sz;
+	unsigned int ioc_base, mem_sz;
+
+	/*
+	 * If IOC was already enabled (due to bootloader) it technically needs to
+	 * be reconfigured with aperture base,size corresponding to Linux memory map
+	 * which will certainly be different than uboot's. But disabling and
+	 * reenabling IOC when DMA might be potentially active is tricky business.
+	 * To avoid random memory issues later, just panic here and ask user to
+	 * upgrade bootloader to one which doesn't enable IOC
+	 */
+	if (read_aux_reg(ARC_REG_IO_COH_ENABLE) & ARC_IO_COH_ENABLE_BIT)
+		panic("IOC already enabled, please upgrade bootloader!\n");
+
+	if (!ioc_enable)
+		return;
 
 	/* Flush + invalidate + disable L1 dcache */
 	__dc_disable();
@@ -1092,25 +1179,43 @@ noinline void __init arc_ioc_setup(void)
 	if (read_aux_reg(ARC_REG_SLC_BCR))
 		slc_entire_op(OP_FLUSH_N_INV);
 
-	/* IOC Aperture start: TDB: handle non default CONFIG_LINUX_LINK_BASE */
-	write_aux_reg(ARC_REG_IO_COH_AP0_BASE, 0x80000);
-
 	/*
-	 * IOC Aperture size:
-	 *   decoded as 2 ^ (SIZE + 2) KB: so setting 0x11 implies 512M
+	 * currently IOC Aperture covers entire DDR
 	 * TBD: fix for PGU + 1GB of low mem
 	 * TBD: fix for PAE
 	 */
-	ap_sz = order_base_2(arc_get_mem_sz()/1024) - 2;
-	write_aux_reg(ARC_REG_IO_COH_AP0_SIZE, ap_sz);
+	mem_sz = arc_get_mem_sz();
 
-	write_aux_reg(ARC_REG_IO_COH_PARTIAL, 1);
-	write_aux_reg(ARC_REG_IO_COH_ENABLE, 1);
+	if (!is_power_of_2(mem_sz) || mem_sz < 4096)
+		panic("IOC Aperture size must be power of 2 larger than 4KB");
+
+	/*
+	 * IOC Aperture size decoded as 2 ^ (SIZE + 2) KB,
+	 * so setting 0x11 implies 512MB, 0x12 implies 1GB...
+	 */
+	write_aux_reg(ARC_REG_IO_COH_AP0_SIZE, order_base_2(mem_sz >> 10) - 2);
+
+	/* for now assume kernel base is start of IOC aperture */
+	ioc_base = CONFIG_LINUX_RAM_BASE;
+
+	if (ioc_base % mem_sz != 0)
+		panic("IOC Aperture start must be aligned to the size of the aperture");
+
+	write_aux_reg(ARC_REG_IO_COH_AP0_BASE, ioc_base >> 12);
+	write_aux_reg(ARC_REG_IO_COH_PARTIAL, ARC_IO_COH_PARTIAL_BIT);
+	write_aux_reg(ARC_REG_IO_COH_ENABLE, ARC_IO_COH_ENABLE_BIT);
 
 	/* Re-enable L1 dcache */
 	__dc_enable();
 }
 
+/*
+ * Cache related boot time checks/setups only needed on master CPU:
+ *  - Geometry checks (kernel build and hardware agree: e.g. L1_CACHE_BYTES)
+ *    Assume SMP only, so all cores will have same cache config. A check on
+ *    one core suffices for all
+ *  - IOC setup / dma callbacks only need to be done once
+ */
 void __init arc_cache_init_master(void)
 {
 	unsigned int __maybe_unused cpu = smp_processor_id();
@@ -1161,18 +1266,24 @@ void __init arc_cache_init_master(void)
 		}
 	}
 
+	/*
+	 * Check that SMP_CACHE_BYTES (and hence ARCH_DMA_MINALIGN) is larger
+	 * or equal to any cache line length.
+	 */
+	BUILD_BUG_ON_MSG(L1_CACHE_BYTES > SMP_CACHE_BYTES,
+			 "SMP_CACHE_BYTES must be >= any cache line length");
+	if (is_isa_arcv2() && (l2_line_sz > SMP_CACHE_BYTES))
+		panic("L2 Cache line [%d] > kernel Config [%d]\n",
+		      l2_line_sz, SMP_CACHE_BYTES);
+
 	/* Note that SLC disable not formally supported till HS 3.0 */
 	if (is_isa_arcv2() && l2_line_sz && !slc_enable)
 		arc_slc_disable();
 
-	if (is_isa_arcv2() && ioc_enable)
+	if (is_isa_arcv2() && ioc_exists)
 		arc_ioc_setup();
 
-	if (is_isa_arcv2() && ioc_enable) {
-		__dma_cache_wback_inv = __dma_cache_wback_inv_ioc;
-		__dma_cache_inv = __dma_cache_inv_ioc;
-		__dma_cache_wback = __dma_cache_wback_ioc;
-	} else if (is_isa_arcv2() && l2_line_sz && slc_enable) {
+	if (is_isa_arcv2() && l2_line_sz && slc_enable) {
 		__dma_cache_wback_inv = __dma_cache_wback_inv_slc;
 		__dma_cache_inv = __dma_cache_inv_slc;
 		__dma_cache_wback = __dma_cache_wback_slc;
@@ -1181,6 +1292,12 @@ void __init arc_cache_init_master(void)
 		__dma_cache_inv = __dma_cache_inv_l1;
 		__dma_cache_wback = __dma_cache_wback_l1;
 	}
+	/*
+	 * In case of IOC (say IOC+SLC case), pointers above could still be set
+	 * but end up not being relevant as the first function in chain is not
+	 * called at all for devices using coherent DMA.
+	 *     arch_sync_dma_for_cpu() -> dma_cache_*() -> __dma_cache_*()
+	 */
 }
 
 void __ref arc_cache_init(void)
@@ -1188,14 +1305,29 @@ void __ref arc_cache_init(void)
 	unsigned int __maybe_unused cpu = smp_processor_id();
 	char str[256];
 
-	printk(arc_cache_mumbojumbo(0, str, sizeof(str)));
+	pr_info("%s", arc_cache_mumbojumbo(0, str, sizeof(str)));
 
-	/*
-	 * Only master CPU needs to execute rest of function:
-	 *  - Assume SMP so all cores will have same cache config so
-	 *    any geomtry checks will be same for all
-	 *  - IOC setup / dma callbacks only need to be setup once
-	 */
 	if (!cpu)
 		arc_cache_init_master();
+
+	/*
+	 * In PAE regime, TLB and cache maintenance ops take wider addresses
+	 * And even if PAE is not enabled in kernel, the upper 32-bits still need
+	 * to be zeroed to keep the ops sane.
+	 * As an optimization for more common !PAE enabled case, zero them out
+	 * once at init, rather than checking/setting to 0 for every runtime op
+	 */
+	if (is_isa_arcv2() && pae40_exist_but_not_enab()) {
+
+		if (IS_ENABLED(CONFIG_ARC_HAS_ICACHE))
+			write_aux_reg(ARC_REG_IC_PTAG_HI, 0);
+
+		if (IS_ENABLED(CONFIG_ARC_HAS_DCACHE))
+			write_aux_reg(ARC_REG_DC_PTAG_HI, 0);
+
+		if (l2_line_sz) {
+			write_aux_reg(ARC_REG_SLC_RGN_END1, 0);
+			write_aux_reg(ARC_REG_SLC_RGN_START1, 0);
+		}
+	}
 }

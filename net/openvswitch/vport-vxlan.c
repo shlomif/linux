@@ -40,14 +40,14 @@ static int vxlan_get_options(const struct vport *vport, struct sk_buff *skb)
 	if (nla_put_u16(skb, OVS_TUNNEL_ATTR_DST_PORT, ntohs(dst_port)))
 		return -EMSGSIZE;
 
-	if (vxlan->flags & VXLAN_F_GBP) {
+	if (vxlan->cfg.flags & VXLAN_F_GBP) {
 		struct nlattr *exts;
 
 		exts = nla_nest_start(skb, OVS_TUNNEL_ATTR_EXTENSION);
 		if (!exts)
 			return -EMSGSIZE;
 
-		if (vxlan->flags & VXLAN_F_GBP &&
+		if (vxlan->cfg.flags & VXLAN_F_GBP &&
 		    nla_put_flag(skb, OVS_VXLAN_EXT_GBP))
 			return -EMSGSIZE;
 
@@ -131,7 +131,7 @@ static struct vport *vxlan_tnl_create(const struct vport_parms *parms)
 		return ERR_CAST(dev);
 	}
 
-	err = dev_change_flags(dev, dev->flags | IFF_UP);
+	err = dev_change_flags(dev, dev->flags | IFF_UP, NULL);
 	if (err < 0) {
 		rtnl_delete_link(dev);
 		rtnl_unlock();

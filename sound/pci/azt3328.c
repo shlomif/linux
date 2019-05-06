@@ -2014,7 +2014,7 @@ static const struct snd_pcm_hardware snd_azf3328_hardware =
 };
 
 
-static unsigned int snd_azf3328_fixed_rates[] = {
+static const unsigned int snd_azf3328_fixed_rates[] = {
 	AZF_FREQ_4000,
 	AZF_FREQ_4800,
 	AZF_FREQ_5512,
@@ -2031,7 +2031,7 @@ static unsigned int snd_azf3328_fixed_rates[] = {
 	AZF_FREQ_66200
 };
 
-static struct snd_pcm_hw_constraint_list snd_azf3328_hw_constraints_rates = {
+static const struct snd_pcm_hw_constraint_list snd_azf3328_hw_constraints_rates = {
 	.count = ARRAY_SIZE(snd_azf3328_fixed_rates),
 	.list = snd_azf3328_fixed_rates,
 	.mask = 0,
@@ -2698,10 +2698,6 @@ snd_azf3328_suspend(struct device *dev)
 	u16 *saved_regs_ctrl_u16;
 
 	snd_power_change_state(card, SNDRV_CTL_POWER_D3hot);
-
-	/* same pcm object for playback/capture */
-	snd_pcm_suspend_all(chip->pcm[AZF_CODEC_PLAYBACK]);
-	snd_pcm_suspend_all(chip->pcm[AZF_CODEC_I2S_OUT]);
 
 	snd_azf3328_suspend_ac97(chip);
 

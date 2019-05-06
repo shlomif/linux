@@ -1,14 +1,10 @@
+// SPDX-License-Identifier: GPL-2.0+
 /*
  * drivers/net/phy/at803x.c
  *
  * Driver for Atheros 803x PHY
  *
  * Author: Matus Ujhelyi <ujhelyi.m@gmail.com>
- *
- * This program is free software; you can redistribute  it and/or modify it
- * under  the terms of  the GNU General  Public License as published by the
- * Free Software Foundation;  either version 2 of the  License, or (at your
- * option) any later version.
  */
 
 #include <linux/phy.h>
@@ -39,9 +35,6 @@
 #define AT803X_LOC_MAC_ADDR_0_15_OFFSET		0x804C
 #define AT803X_LOC_MAC_ADDR_16_31_OFFSET	0x804B
 #define AT803X_LOC_MAC_ADDR_32_47_OFFSET	0x804A
-#define AT803X_MMD_ACCESS_CONTROL		0x0D
-#define AT803X_MMD_ACCESS_CONTROL_DATA		0x0E
-#define AT803X_FUNC_DATA			0x4003
 #define AT803X_REG_CHIP_CONFIG			0x1f
 #define AT803X_BT_BX_REG_SEL			0x8000
 
@@ -71,7 +64,6 @@ MODULE_LICENSE("GPL");
 
 struct at803x_priv {
 	bool phy_reset:1;
-	struct gpio_desc *gpiod_reset;
 };
 
 struct at803x_context {
@@ -111,16 +103,28 @@ static int at803x_debug_reg_mask(struct phy_device *phydev, u16 reg,
 	return phy_write(phydev, AT803X_DEBUG_DATA, val);
 }
 
-static inline int at803x_enable_rx_delay(struct phy_device *phydev)
+static int at803x_enable_rx_delay(struct phy_device *phydev)
 {
 	return at803x_debug_reg_mask(phydev, AT803X_DEBUG_REG_0, 0,
-					AT803X_DEBUG_RX_CLK_DLY_EN);
+				     AT803X_DEBUG_RX_CLK_DLY_EN);
 }
 
-static inline int at803x_enable_tx_delay(struct phy_device *phydev)
+static int at803x_enable_tx_delay(struct phy_device *phydev)
 {
 	return at803x_debug_reg_mask(phydev, AT803X_DEBUG_REG_5, 0,
-					AT803X_DEBUG_TX_CLK_DLY_EN);
+				     AT803X_DEBUG_TX_CLK_DLY_EN);
+}
+
+static int at803x_disable_rx_delay(struct phy_device *phydev)
+{
+	return at803x_debug_reg_mask(phydev, AT803X_DEBUG_REG_0,
+				     AT803X_DEBUG_RX_CLK_DLY_EN, 0);
+}
+
+static int at803x_disable_tx_delay(struct phy_device *phydev)
+{
+	return at803x_debug_reg_mask(phydev, AT803X_DEBUG_REG_5,
+				     AT803X_DEBUG_TX_CLK_DLY_EN, 0);
 }
 
 /* save relevant PHY registers to private copy */
@@ -167,18 +171,11 @@ static int at803x_set_wol(struct phy_device *phydev,
 		mac = (const u8 *) ndev->dev_addr;
 
 		if (!is_valid_ether_addr(mac))
-			return -EFAULT;
+			return -EINVAL;
 
-		for (i = 0; i < 3; i++) {
-			phy_write(phydev, AT803X_MMD_ACCESS_CONTROL,
-				  AT803X_DEVICE_ADDR);
-			phy_write(phydev, AT803X_MMD_ACCESS_CONTROL_DATA,
-				  offsets[i]);
-			phy_write(phydev, AT803X_MMD_ACCESS_CONTROL,
-				  AT803X_FUNC_DATA);
-			phy_write(phydev, AT803X_MMD_ACCESS_CONTROL_DATA,
-				  mac[(i * 2) + 1] | (mac[(i * 2)] << 8));
-		}
+		for (i = 0; i < 3; i++)
+			phy_write_mmd(phydev, AT803X_DEVICE_ADDR, offsets[i],
+				      mac[(i * 2) + 1] | (mac[(i * 2)] << 8));
 
 		value = phy_read(phydev, AT803X_INTR_ENABLE);
 		value |= AT803X_INTR_ENABLE_WOL;
@@ -216,60 +213,33 @@ static int at803x_suspend(struct phy_device *phydev)
 	int value;
 	int wol_enabled;
 
-	mutex_lock(&phydev->lock);
-
 	value = phy_read(phydev, AT803X_INTR_ENABLE);
 	wol_enabled = value & AT803X_INTR_ENABLE_WOL;
 
-	value = phy_read(phydev, MII_BMCR);
-
 	if (wol_enabled)
-		value |= BMCR_ISOLATE;
+		value = BMCR_ISOLATE;
 	else
-		value |= BMCR_PDOWN;
+		value = BMCR_PDOWN;
 
-	phy_write(phydev, MII_BMCR, value);
-
-	mutex_unlock(&phydev->lock);
+	phy_modify(phydev, MII_BMCR, 0, value);
 
 	return 0;
 }
 
 static int at803x_resume(struct phy_device *phydev)
 {
-	int value;
-
-	mutex_lock(&phydev->lock);
-
-	value = phy_read(phydev, MII_BMCR);
-	value &= ~(BMCR_PDOWN | BMCR_ISOLATE);
-	phy_write(phydev, MII_BMCR, value);
-
-	mutex_unlock(&phydev->lock);
-
-	return 0;
+	return phy_modify(phydev, MII_BMCR, BMCR_PDOWN | BMCR_ISOLATE, 0);
 }
 
 static int at803x_probe(struct phy_device *phydev)
 {
 	struct device *dev = &phydev->mdio.dev;
 	struct at803x_priv *priv;
-	struct gpio_desc *gpiod_reset;
 
 	priv = devm_kzalloc(dev, sizeof(*priv), GFP_KERNEL);
 	if (!priv)
 		return -ENOMEM;
 
-	if (phydev->drv->phy_id != ATH8030_PHY_ID)
-		goto does_not_require_reset_workaround;
-
-	gpiod_reset = devm_gpiod_get_optional(dev, "reset", GPIOD_OUT_LOW);
-	if (IS_ERR(gpiod_reset))
-		return PTR_ERR(gpiod_reset);
-
-	priv->gpiod_reset = gpiod_reset;
-
-does_not_require_reset_workaround:
 	phydev->priv = priv;
 
 	return 0;
@@ -283,21 +253,42 @@ static int at803x_config_init(struct phy_device *phydev)
 	if (ret < 0)
 		return ret;
 
-	if (phydev->interface == PHY_INTERFACE_MODE_RGMII_RXID ||
-			phydev->interface == PHY_INTERFACE_MODE_RGMII_ID) {
+	/* The RX and TX delay default is:
+	 *   after HW reset: RX delay enabled and TX delay disabled
+	 *   after SW reset: RX delay enabled, while TX delay retains the
+	 *   value before reset.
+	 *
+	 * So let's first disable the RX and TX delays in PHY and enable
+	 * them based on the mode selected (this also takes care of RGMII
+	 * mode where we expect delays to be disabled)
+	 */
+
+	ret = at803x_disable_rx_delay(phydev);
+	if (ret < 0)
+		return ret;
+	ret = at803x_disable_tx_delay(phydev);
+	if (ret < 0)
+		return ret;
+
+	if (phydev->interface == PHY_INTERFACE_MODE_RGMII_ID ||
+	    phydev->interface == PHY_INTERFACE_MODE_RGMII_RXID) {
+		/* If RGMII_ID or RGMII_RXID are specified enable RX delay,
+		 * otherwise keep it disabled
+		 */
 		ret = at803x_enable_rx_delay(phydev);
 		if (ret < 0)
 			return ret;
 	}
 
-	if (phydev->interface == PHY_INTERFACE_MODE_RGMII_TXID ||
-			phydev->interface == PHY_INTERFACE_MODE_RGMII_ID) {
+	if (phydev->interface == PHY_INTERFACE_MODE_RGMII_ID ||
+	    phydev->interface == PHY_INTERFACE_MODE_RGMII_TXID) {
+		/* If RGMII_ID or RGMII_TXID are specified enable TX delay,
+		 * otherwise keep it disabled
+		 */
 		ret = at803x_enable_tx_delay(phydev);
-		if (ret < 0)
-			return ret;
 	}
 
-	return 0;
+	return ret;
 }
 
 static int at803x_ack_interrupt(struct phy_device *phydev)
@@ -343,14 +334,14 @@ static void at803x_link_change_notify(struct phy_device *phydev)
 	 * cannot recover from by software.
 	 */
 	if (phydev->state == PHY_NOLINK) {
-		if (priv->gpiod_reset && !priv->phy_reset) {
+		if (phydev->mdio.reset && !priv->phy_reset) {
 			struct at803x_context context;
 
 			at803x_context_save(phydev, &context);
 
-			gpiod_set_value(priv->gpiod_reset, 1);
+			phy_device_reset(phydev, 1);
 			msleep(1);
-			gpiod_set_value(priv->gpiod_reset, 0);
+			phy_device_reset(phydev, 0);
 			msleep(1);
 
 			at803x_context_restore(phydev, &context);
@@ -385,7 +376,7 @@ static int at803x_aneg_done(struct phy_device *phydev)
 
 	/* check if the SGMII link is OK. */
 	if (!(phy_read(phydev, AT803X_PSSR) & AT803X_PSSR_MR_AN_COMPLETE)) {
-		pr_warn("803x_aneg_done: SGMII link is not ok\n");
+		phydev_warn(phydev, "803x_aneg_done: SGMII link is not ok\n");
 		aneg_done = 0;
 	}
 	/* switch back to copper page */
@@ -407,9 +398,6 @@ static struct phy_driver at803x_driver[] = {
 	.suspend		= at803x_suspend,
 	.resume			= at803x_resume,
 	.features		= PHY_GBIT_FEATURES,
-	.flags			= PHY_HAS_INTERRUPT,
-	.config_aneg		= genphy_config_aneg,
-	.read_status		= genphy_read_status,
 	.ack_interrupt		= at803x_ack_interrupt,
 	.config_intr		= at803x_config_intr,
 }, {
@@ -425,9 +413,6 @@ static struct phy_driver at803x_driver[] = {
 	.suspend		= at803x_suspend,
 	.resume			= at803x_resume,
 	.features		= PHY_BASIC_FEATURES,
-	.flags			= PHY_HAS_INTERRUPT,
-	.config_aneg		= genphy_config_aneg,
-	.read_status		= genphy_read_status,
 	.ack_interrupt		= at803x_ack_interrupt,
 	.config_intr		= at803x_config_intr,
 }, {
@@ -442,9 +427,6 @@ static struct phy_driver at803x_driver[] = {
 	.suspend		= at803x_suspend,
 	.resume			= at803x_resume,
 	.features		= PHY_GBIT_FEATURES,
-	.flags			= PHY_HAS_INTERRUPT,
-	.config_aneg		= genphy_config_aneg,
-	.read_status		= genphy_read_status,
 	.aneg_done		= at803x_aneg_done,
 	.ack_interrupt		= &at803x_ack_interrupt,
 	.config_intr		= &at803x_config_intr,

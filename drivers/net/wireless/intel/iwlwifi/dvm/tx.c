@@ -13,11 +13,6 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
  * General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110,
- * USA
- *
  * The full GNU General Public License is included in this distribution
  * in the file called COPYING.
  *
@@ -319,8 +314,7 @@ int iwlagn_tx_skb(struct iwl_priv *priv,
 		if (noa_data &&
 		    pskb_expand_head(skb, 0, noa_data->length,
 				     GFP_ATOMIC) == 0) {
-			memcpy(skb_put(skb, noa_data->length),
-			       noa_data->data, noa_data->length);
+			skb_put_data(skb, noa_data->data, noa_data->length);
 			hdr = (struct ieee80211_hdr *)skb->data;
 		}
 	}
@@ -1190,11 +1184,11 @@ void iwlagn_rx_reply_tx(struct iwl_priv *priv, struct iwl_rx_cmd_buffer *rxb)
 				next_reclaimed;
 			IWL_DEBUG_TX_REPLY(priv, "Next reclaimed packet:%d\n",
 						  next_reclaimed);
+			iwlagn_check_ratid_empty(priv, sta_id, tid);
 		}
 
 		iwl_trans_reclaim(priv->trans, txq_id, ssn, &skbs);
 
-		iwlagn_check_ratid_empty(priv, sta_id, tid);
 		freed = 0;
 
 		/* process frames */

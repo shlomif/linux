@@ -26,8 +26,7 @@
 #include <linux/wait.h>
 #include "tpm.h"
 
-/* max. buffer size supported by our TPM */
-#define TPM_BUFSIZE 1260
+#define TPM_I2C_INFINEON_BUFSIZE 1260
 
 /* max. number of iterations after I2C NAK */
 #define MAX_COUNT 3
@@ -63,13 +62,16 @@ enum i2c_chip_type {
 	UNKNOWN,
 };
 
-/* Structure to store I2C TPM specific stuff */
 struct tpm_inf_dev {
 	struct i2c_client *client;
 	int locality;
-	u8 buf[TPM_BUFSIZE + sizeof(u8)]; /* max. buffer size + addr */
+	/* In addition to the data itself, the buffer must fit the 7-bit I2C
+	 * address and the direction bit.
+	 */
+	u8 buf[TPM_I2C_INFINEON_BUFSIZE + 1];
 	struct tpm_chip *chip;
 	enum i2c_chip_type chip_type;
+	unsigned int adapterlimit;
 };
 
 static struct tpm_inf_dev tpm_dev;
@@ -111,11 +113,12 @@ static int iic_tpm_read(u8 addr, u8 *buffer, size_t len)
 
 	int rc = 0;
 	int count;
+	unsigned int msglen = len;
 
 	/* Lock the adapter for the duration of the whole sequence. */
 	if (!tpm_dev.client->adapter->algo->master_xfer)
 		return -EOPNOTSUPP;
-	i2c_lock_adapter(tpm_dev.client->adapter);
+	i2c_lock_bus(tpm_dev.client->adapter, I2C_LOCK_SEGMENT);
 
 	if (tpm_dev.chip_type == SLB9645) {
 		/* use a combined read for newer chips
@@ -131,32 +134,66 @@ static int iic_tpm_read(u8 addr, u8 *buffer, size_t len)
 			usleep_range(SLEEP_DURATION_LOW, SLEEP_DURATION_HI);
 		}
 	} else {
-		/* slb9635 protocol should work in all cases */
-		for (count = 0; count < MAX_COUNT; count++) {
-			rc = __i2c_transfer(tpm_dev.client->adapter, &msg1, 1);
-			if (rc > 0)
-				break;	/* break here to skip sleep */
-
-			usleep_range(SLEEP_DURATION_LOW, SLEEP_DURATION_HI);
-		}
-
-		if (rc <= 0)
-			goto out;
-
-		/* After the TPM has successfully received the register address
-		 * it needs some time, thus we're sleeping here again, before
-		 * retrieving the data
+		/* Expect to send one command message and one data message, but
+		 * support looping over each or both if necessary.
 		 */
-		for (count = 0; count < MAX_COUNT; count++) {
-			usleep_range(SLEEP_DURATION_LOW, SLEEP_DURATION_HI);
-			rc = __i2c_transfer(tpm_dev.client->adapter, &msg2, 1);
-			if (rc > 0)
-				break;
+		while (len > 0) {
+			/* slb9635 protocol should work in all cases */
+			for (count = 0; count < MAX_COUNT; count++) {
+				rc = __i2c_transfer(tpm_dev.client->adapter,
+						    &msg1, 1);
+				if (rc > 0)
+					break;	/* break here to skip sleep */
+
+				usleep_range(SLEEP_DURATION_LOW,
+					     SLEEP_DURATION_HI);
+			}
+
+			if (rc <= 0)
+				goto out;
+
+			/* After the TPM has successfully received the register
+			 * address it needs some time, thus we're sleeping here
+			 * again, before retrieving the data
+			 */
+			for (count = 0; count < MAX_COUNT; count++) {
+				if (tpm_dev.adapterlimit) {
+					msglen = min_t(unsigned int,
+						       tpm_dev.adapterlimit,
+						       len);
+					msg2.len = msglen;
+				}
+				usleep_range(SLEEP_DURATION_LOW,
+					     SLEEP_DURATION_HI);
+				rc = __i2c_transfer(tpm_dev.client->adapter,
+						    &msg2, 1);
+				if (rc > 0) {
+					/* Since len is unsigned, make doubly
+					 * sure we do not underflow it.
+					 */
+					if (msglen > len)
+						len = 0;
+					else
+						len -= msglen;
+					msg2.buf += msglen;
+					break;
+				}
+				/* If the I2C adapter rejected the request (e.g
+				 * when the quirk read_max_len < len) fall back
+				 * to a sane minimum value and try again.
+				 */
+				if (rc == -EOPNOTSUPP)
+					tpm_dev.adapterlimit =
+							I2C_SMBUS_BLOCK_MAX;
+			}
+
+			if (rc <= 0)
+				goto out;
 		}
 	}
 
 out:
-	i2c_unlock_adapter(tpm_dev.client->adapter);
+	i2c_unlock_bus(tpm_dev.client->adapter, I2C_LOCK_SEGMENT);
 	/* take care of 'guard time' */
 	usleep_range(SLEEP_DURATION_LOW, SLEEP_DURATION_HI);
 
@@ -183,12 +220,12 @@ static int iic_tpm_write_generic(u8 addr, u8 *buffer, size_t len,
 		.buf = tpm_dev.buf
 	};
 
-	if (len > TPM_BUFSIZE)
+	if (len > TPM_I2C_INFINEON_BUFSIZE)
 		return -EINVAL;
 
 	if (!tpm_dev.client->adapter->algo->master_xfer)
 		return -EOPNOTSUPP;
-	i2c_lock_adapter(tpm_dev.client->adapter);
+	i2c_lock_bus(tpm_dev.client->adapter, I2C_LOCK_SEGMENT);
 
 	/* prepend the 'register address' to the buffer */
 	tpm_dev.buf[0] = addr;
@@ -207,7 +244,7 @@ static int iic_tpm_write_generic(u8 addr, u8 *buffer, size_t len,
 		usleep_range(sleep_low, sleep_hi);
 	}
 
-	i2c_unlock_adapter(tpm_dev.client->adapter);
+	i2c_unlock_bus(tpm_dev.client->adapter, I2C_LOCK_SEGMENT);
 	/* take care of 'guard time' */
 	usleep_range(SLEEP_DURATION_LOW, SLEEP_DURATION_HI);
 
@@ -437,7 +474,8 @@ static int recv_data(struct tpm_chip *chip, u8 *buf, size_t count)
 static int tpm_tis_i2c_recv(struct tpm_chip *chip, u8 *buf, size_t count)
 {
 	int size = 0;
-	int expected, status;
+	int status;
+	u32 expected;
 
 	if (count < TPM_HEADER_SIZE) {
 		size = -EIO;
@@ -452,7 +490,7 @@ static int tpm_tis_i2c_recv(struct tpm_chip *chip, u8 *buf, size_t count)
 	}
 
 	expected = be32_to_cpu(*(__be32 *)(buf + 2));
-	if ((size_t) expected > count) {
+	if (((size_t) expected > count) || (expected < TPM_HEADER_SIZE)) {
 		size = -EIO;
 		goto out;
 	}
@@ -490,8 +528,8 @@ static int tpm_tis_i2c_send(struct tpm_chip *chip, u8 *buf, size_t len)
 	u8 retries = 0;
 	u8 sts = TPM_STS_GO;
 
-	if (len > TPM_BUFSIZE)
-		return -E2BIG;	/* command is too long for our tpm, sorry */
+	if (len > TPM_I2C_INFINEON_BUFSIZE)
+		return -E2BIG;
 
 	if (request_locality(chip, 0) < 0)
 		return -EBUSY;
@@ -550,7 +588,7 @@ static int tpm_tis_i2c_send(struct tpm_chip *chip, u8 *buf, size_t len)
 	/* go and do it */
 	iic_tpm_write(TPM_STS(tpm_dev.locality), &sts, 1);
 
-	return len;
+	return 0;
 out_err:
 	tpm_tis_i2c_ready(chip);
 	/* The TPM needs some time to clean up here,
@@ -629,9 +667,9 @@ out_err:
 }
 
 static const struct i2c_device_id tpm_tis_i2c_table[] = {
-	{"tpm_i2c_infineon", 0},
-	{"slb9635tt", 0},
-	{"slb9645tt", 1},
+	{"tpm_i2c_infineon"},
+	{"slb9635tt"},
+	{"slb9645tt"},
 	{},
 };
 
@@ -639,24 +677,9 @@ MODULE_DEVICE_TABLE(i2c, tpm_tis_i2c_table);
 
 #ifdef CONFIG_OF
 static const struct of_device_id tpm_tis_i2c_of_match[] = {
-	{
-		.name = "tpm_i2c_infineon",
-		.type = "tpm",
-		.compatible = "infineon,tpm_i2c_infineon",
-		.data = (void *)0
-	},
-	{
-		.name = "slb9635tt",
-		.type = "tpm",
-		.compatible = "infineon,slb9635tt",
-		.data = (void *)0
-	},
-	{
-		.name = "slb9645tt",
-		.type = "tpm",
-		.compatible = "infineon,slb9645tt",
-		.data = (void *)1
-	},
+	{.compatible = "infineon,tpm_i2c_infineon"},
+	{.compatible = "infineon,slb9635tt"},
+	{.compatible = "infineon,slb9645tt"},
 	{},
 };
 MODULE_DEVICE_TABLE(of, tpm_tis_i2c_of_match);

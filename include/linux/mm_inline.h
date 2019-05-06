@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef LINUX_MM_INLINE_H
 #define LINUX_MM_INLINE_H
 
@@ -123,7 +124,4 @@ static __always_inline enum lru_list page_lru(struct page *page)
 	}
 	return lru;
 }
-
-#define lru_to_page(head) (list_entry((head)->prev, struct page, lru))
-
 #endif

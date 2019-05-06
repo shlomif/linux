@@ -152,7 +152,7 @@ static void sd_isoc_irq(struct urb *urb)
 	u8 *data;
 	int i, st;
 
-	PDEBUG(D_PACK, "sd isoc irq");
+	gspca_dbg(gspca_dev, D_PACK, "sd isoc irq\n");
 	if (!gspca_dev->streaming)
 		return;
 	if (urb->status != 0) {
@@ -180,9 +180,9 @@ static void sd_isoc_irq(struct urb *urb)
 		/* check the packet status and length */
 		if (urb0->iso_frame_desc[i].actual_length != SD_PKT_SZ
 		    || urb->iso_frame_desc[i].actual_length != SD_PKT_SZ) {
-			PERR("ISOC bad lengths %d / %d",
-				urb0->iso_frame_desc[i].actual_length,
-				urb->iso_frame_desc[i].actual_length);
+			gspca_err(gspca_dev, "ISOC bad lengths %d / %d\n",
+				  urb0->iso_frame_desc[i].actual_length,
+				  urb->iso_frame_desc[i].actual_length);
 			gspca_dev->last_packet_type = DISCARD_PACKET;
 			continue;
 		}
@@ -205,12 +205,12 @@ static void sd_isoc_irq(struct urb *urb)
 		 *	- 80 ba/bb 00 00 = start of image followed by 'ff d8'
 		 *	- 04 ba/bb oo oo = image piece
 		 *		where 'oo oo' is the image offset
-						(not cheked)
+						(not checked)
 		 *	- (other -> bad frame)
 		 * The images are JPEG encoded with full header and
 		 * normal ff escape.
 		 * The end of image ('ff d9') may occur in any URB.
-		 * (not cheked)
+		 * (not checked)
 		 */
 		data = (u8 *) urb0->transfer_buffer
 					+ urb0->iso_frame_desc[i].offset;

@@ -113,7 +113,6 @@ static void pptp_expectfn(struct nf_conn *ct,
 	/* Can you see how rusty this code is, compared with the pre-2.6.11
 	 * one? That's what happened to my shiny newnat of 2002 ;( -HW */
 
-	rcu_read_lock();
 	nf_nat_pptp_expectfn = rcu_dereference(nf_nat_pptp_hook_expectfn);
 	if (nf_nat_pptp_expectfn && ct->master->status & IPS_NAT_MASK)
 		nf_nat_pptp_expectfn(ct, exp);
@@ -122,7 +121,7 @@ static void pptp_expectfn(struct nf_conn *ct,
 		struct nf_conntrack_expect *exp_other;
 
 		/* obviously this tuple inversion only works until you do NAT */
-		nf_ct_invert_tuplepr(&inv_t, &exp->tuple);
+		nf_ct_invert_tuple(&inv_t, &exp->tuple);
 		pr_debug("trying to unexpect other dir: ");
 		nf_ct_dump_tuple(&inv_t);
 
@@ -136,7 +135,6 @@ static void pptp_expectfn(struct nf_conn *ct,
 			pr_debug("not found\n");
 		}
 	}
-	rcu_read_unlock();
 }
 
 static int destroy_sibling_or_exp(struct net *net, struct nf_conn *ct,

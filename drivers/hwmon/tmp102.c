@@ -141,10 +141,10 @@ static umode_t tmp102_is_visible(const void *data, enum hwmon_sensor_types type,
 
 	switch (attr) {
 	case hwmon_temp_input:
-		return S_IRUGO;
+		return 0444;
 	case hwmon_temp_max_hyst:
 	case hwmon_temp_max:
-		return S_IRUGO | S_IWUSR;
+		return 0644;
 	default:
 		return 0;
 	}
@@ -212,7 +212,8 @@ static const struct regmap_config tmp102_regmap_config = {
 	.volatile_reg = tmp102_is_volatile_reg,
 	.val_format_endian = REGMAP_ENDIAN_BIG,
 	.cache_type = REGCACHE_RBTREE,
-	.use_single_rw = true,
+	.use_single_read = true,
+	.use_single_write = true,
 };
 
 static int tmp102_probe(struct i2c_client *client,
@@ -268,14 +269,11 @@ static int tmp102_probe(struct i2c_client *client,
 		return err;
 	}
 
-	tmp102->ready_time = jiffies;
-	if (tmp102->config_orig & TMP102_CONF_SD) {
-		/*
-		 * Mark that we are not ready with data until the first
-		 * conversion is complete
-		 */
-		tmp102->ready_time += msecs_to_jiffies(CONVERSION_TIME_MS);
-	}
+	/*
+	 * Mark that we are not ready with data until the first
+	 * conversion is complete
+	 */
+	tmp102->ready_time = jiffies + msecs_to_jiffies(CONVERSION_TIME_MS);
 
 	hwmon_dev = devm_hwmon_device_register_with_info(dev, client->name,
 							 tmp102,

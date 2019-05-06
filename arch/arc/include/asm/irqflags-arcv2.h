@@ -44,11 +44,14 @@
 #define ARCV2_IRQ_DEF_PRIO	1
 
 /* seed value for status register */
-#define ISA_INIT_STATUS_BITS	(STATUS_IE_MASK | STATUS_AD_MASK | \
-					(ARCV2_IRQ_DEF_PRIO << 1))
+#ifdef CONFIG_ARC_USE_UNALIGNED_MEM_ACCESS
+#define __AD_ENB	STATUS_AD_MASK
+#else
+#define __AD_ENB	0
+#endif
 
-/* SLEEP needs default irq priority (<=) which can interrupt the doze */
-#define ISA_SLEEP_ARG		(0x10 | ARCV2_IRQ_DEF_PRIO)
+#define ISA_INIT_STATUS_BITS	(STATUS_IE_MASK | __AD_ENB | \
+					(ARCV2_IRQ_DEF_PRIO << 1))
 
 #ifndef __ASSEMBLY__
 

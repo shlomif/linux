@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef __NET_GENEVE_H
 #define __NET_GENEVE_H  1
 
@@ -58,6 +59,12 @@ struct genevehdr {
 	u8 rsvd2;
 	struct geneve_opt options[];
 };
+
+static inline bool netif_is_geneve(const struct net_device *dev)
+{
+	return dev->rtnl_link_ops &&
+	       !strcmp(dev->rtnl_link_ops->kind, "geneve");
+}
 
 #ifdef CONFIG_INET
 struct net_device *geneve_dev_create_fb(struct net *net, const char *name,

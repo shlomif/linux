@@ -22,7 +22,7 @@
  * per-device constraint data struct.
  *
  * Note about the per-device constraint data struct allocation:
- * . The per-device constraints data struct ptr is tored into the device
+ * . The per-device constraints data struct ptr is stored into the device
  *    dev_pm_info.
  * . To minimize the data usage by the per-device constraints, the data struct
  *   is only allocated at the first call to dev_pm_qos_add_request.
@@ -139,6 +139,9 @@ static int apply_constraint(struct dev_pm_qos_request *req,
 
 	switch(req->type) {
 	case DEV_PM_QOS_RESUME_LATENCY:
+		if (WARN_ON(action != PM_QOS_REMOVE_REQ && value < 0))
+			value = 0;
+
 		ret = pm_qos_update_target(&qos->resume_latency,
 					   &req->data.pnode, action, value);
 		break;
@@ -189,7 +192,7 @@ static int dev_pm_qos_constraints_allocate(struct device *dev)
 	plist_head_init(&c->list);
 	c->target_value = PM_QOS_RESUME_LATENCY_DEFAULT_VALUE;
 	c->default_value = PM_QOS_RESUME_LATENCY_DEFAULT_VALUE;
-	c->no_constraint_value = PM_QOS_RESUME_LATENCY_DEFAULT_VALUE;
+	c->no_constraint_value = PM_QOS_RESUME_LATENCY_NO_CONSTRAINT;
 	c->type = PM_QOS_MIN;
 	c->notifiers = n;
 
@@ -277,11 +280,11 @@ void dev_pm_qos_constraints_destroy(struct device *dev)
 	mutex_unlock(&dev_pm_qos_sysfs_mtx);
 }
 
-static bool dev_pm_qos_invalid_request(struct device *dev,
-				       struct dev_pm_qos_request *req)
+static bool dev_pm_qos_invalid_req_type(struct device *dev,
+					enum dev_pm_qos_req_type type)
 {
-	return !req || (req->type == DEV_PM_QOS_LATENCY_TOLERANCE
-			&& !dev->power.set_latency_tolerance);
+	return type == DEV_PM_QOS_LATENCY_TOLERANCE &&
+	       !dev->power.set_latency_tolerance;
 }
 
 static int __dev_pm_qos_add_request(struct device *dev,
@@ -290,7 +293,7 @@ static int __dev_pm_qos_add_request(struct device *dev,
 {
 	int ret = 0;
 
-	if (!dev || dev_pm_qos_invalid_request(dev, req))
+	if (!dev || !req || dev_pm_qos_invalid_req_type(dev, type))
 		return -EINVAL;
 
 	if (WARN(dev_pm_qos_request_active(req),

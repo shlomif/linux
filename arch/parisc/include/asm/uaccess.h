@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef __PARISC_UACCESS_H
 #define __PARISC_UACCESS_H
 
@@ -6,7 +7,6 @@
  */
 #include <asm/page.h>
 #include <asm/cache.h>
-#include <asm-generic/uaccess-unaligned.h>
 
 #include <linux/bug.h>
 #include <linux/string.h>
@@ -16,7 +16,6 @@
 
 #define segment_eq(a, b) ((a).seg == (b).seg)
 
-#define get_ds()	(KERNEL_DS)
 #define get_fs()	(current_thread_info()->addr_limit)
 #define set_fs(x)	(current_thread_info()->addr_limit = (x))
 
@@ -27,7 +26,7 @@
  * that put_user is the same as __put_user, etc.
  */
 
-#define access_ok(type, uaddr, size)	\
+#define access_ok(uaddr, size)	\
 	( (uaddr) == (uaddr) )
 
 #define put_user __put_user
@@ -67,17 +66,6 @@ struct exception_table_entry {
  */
 #define ASM_EXCEPTIONTABLE_ENTRY_EFAULT( fault_addr, except_addr )\
 	ASM_EXCEPTIONTABLE_ENTRY( fault_addr, except_addr + 1)
-
-/*
- * The page fault handler stores, in a per-cpu area, the following information
- * if a fixup routine is available.
- */
-struct exception_data {
-	unsigned long fault_ip;
-	unsigned long fault_gp;
-	unsigned long fault_space;
-	unsigned long fault_addr;
-};
 
 /*
  * load_sr2() preloads the space register %%sr2 - based on the value of
@@ -220,7 +208,6 @@ extern long lstrnlen_user(const char __user *, long);
 #define user_addr_max() (~0UL)
 
 #define strnlen_user lstrnlen_user
-#define strlen_user(str) lstrnlen_user(str, 0x7fffffffL)
 #define clear_user lclear_user
 #define __clear_user lclear_user
 

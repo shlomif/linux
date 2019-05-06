@@ -60,7 +60,7 @@ scom_map_t scom_map_device(struct device_node *dev, int index)
 	parent = scom_find_parent(dev);
 
 	if (parent == NULL)
-		return 0;
+		return NULL;
 
 	/*
 	 * We support "scom-reg" properties for adding scom registers
@@ -83,7 +83,7 @@ scom_map_t scom_map_device(struct device_node *dev, int index)
 	size >>= 2;
 
 	if (index >= (size / (2*cells)))
-		return 0;
+		return NULL;
 
 	reg = of_read_number(&prop[index * cells * 2], cells);
 	cnt = of_read_number(&prop[index * cells * 2 + cells], cells);
@@ -194,12 +194,13 @@ static int scom_debug_init_one(struct dentry *root, struct device_node *dn,
 
 	ent->dn = of_node_get(dn);
 	snprintf(ent->name, 16, "%08x", i);
-	ent->path.data = (void*) dn->full_name;
-	ent->path.size = strlen(dn->full_name);
+	ent->path.data = (void*)kasprintf(GFP_KERNEL, "%pOF", dn);
+	ent->path.size = strlen((char *)ent->path.data);
 
 	dir = debugfs_create_dir(ent->name, root);
 	if (!dir) {
 		of_node_put(dn);
+		kfree(ent->path.data);
 		kfree(ent);
 		return -1;
 	}

@@ -30,9 +30,9 @@
 #define EX_ORIG_OFFSET		0
 #define EX_NEW_OFFSET		4
 
-#define JUMP_ENTRY_SIZE		24
+#define JUMP_ENTRY_SIZE		16
 #define JUMP_ORIG_OFFSET	0
-#define JUMP_NEW_OFFSET		8
+#define JUMP_NEW_OFFSET		4
 
 #define ALT_ENTRY_SIZE		13
 #define ALT_ORIG_OFFSET		0
@@ -91,16 +91,16 @@ static int get_alt_entry(struct elf *elf, struct special_entry *entry,
 	alt->jump_or_nop = entry->jump_or_nop;
 
 	if (alt->group) {
-		alt->orig_len = *(unsigned char *)(sec->data + offset +
+		alt->orig_len = *(unsigned char *)(sec->data->d_buf + offset +
 						   entry->orig_len);
-		alt->new_len = *(unsigned char *)(sec->data + offset +
+		alt->new_len = *(unsigned char *)(sec->data->d_buf + offset +
 						  entry->new_len);
 	}
 
 	if (entry->feature) {
 		unsigned short feature;
 
-		feature = *(unsigned short *)(sec->data + offset +
+		feature = *(unsigned short *)(sec->data->d_buf + offset +
 					      entry->feature);
 
 		/*

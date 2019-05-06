@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef __ASM_GENERIC_UACCESS_H
 #define __ASM_GENERIC_UACCESS_H
 
@@ -21,7 +22,6 @@
 #endif
 
 #ifndef get_fs
-#define get_ds()	(KERNEL_DS)
 #define get_fs()	(current_thread_info()->addr_limit)
 
 static inline void set_fs(mm_segment_t fs)
@@ -34,7 +34,7 @@ static inline void set_fs(mm_segment_t fs)
 #define segment_eq(a, b) ((a).seg == (b).seg)
 #endif
 
-#define access_ok(type, addr, size) __access_ok((unsigned long)(addr),(size))
+#define access_ok(addr, size) __access_ok((unsigned long)(addr),(size))
 
 /*
  * The architecture should really override this if possible, at least
@@ -75,10 +75,10 @@ static inline int __access_ok(unsigned long addr, unsigned long size)
 
 #define put_user(x, ptr)					\
 ({								\
-	void *__p = (ptr);					\
+	void __user *__p = (ptr);				\
 	might_fault();						\
-	access_ok(VERIFY_WRITE, __p, sizeof(*ptr)) ?		\
-		__put_user((x), ((__typeof__(*(ptr)) *)__p)) :	\
+	access_ok(__p, sizeof(*ptr)) ?		\
+		__put_user((x), ((__typeof__(*(ptr)) __user *)__p)) :	\
 		-EFAULT;					\
 })
 
@@ -137,10 +137,10 @@ extern int __put_user_bad(void) __attribute__((noreturn));
 
 #define get_user(x, ptr)					\
 ({								\
-	const void *__p = (ptr);				\
+	const void __user *__p = (ptr);				\
 	might_fault();						\
-	access_ok(VERIFY_READ, __p, sizeof(*ptr)) ?		\
-		__get_user((x), (__typeof__(*(ptr)) *)__p) :	\
+	access_ok(__p, sizeof(*ptr)) ?		\
+		__get_user((x), (__typeof__(*(ptr)) __user *)__p) :\
 		((x) = (__typeof__(*(ptr)))0,-EFAULT);		\
 })
 
@@ -174,7 +174,7 @@ __strncpy_from_user(char *dst, const char __user *src, long count)
 static inline long
 strncpy_from_user(char *dst, const char __user *src, long count)
 {
-	if (!access_ok(VERIFY_READ, src, 1))
+	if (!access_ok(src, 1))
 		return -EFAULT;
 	return __strncpy_from_user(dst, src, count);
 }
@@ -195,14 +195,9 @@ strncpy_from_user(char *dst, const char __user *src, long count)
  */
 static inline long strnlen_user(const char __user *src, long n)
 {
-	if (!access_ok(VERIFY_READ, src, 1))
+	if (!access_ok(src, 1))
 		return 0;
 	return __strnlen_user(src, n);
-}
-
-static inline long strlen_user(const char __user *src)
-{
-	return strnlen_user(src, 32767);
 }
 
 /*
@@ -221,7 +216,7 @@ static inline __must_check unsigned long
 clear_user(void __user *to, unsigned long n)
 {
 	might_fault();
-	if (!access_ok(VERIFY_WRITE, to, n))
+	if (!access_ok(to, n))
 		return n;
 
 	return __clear_user(to, n);

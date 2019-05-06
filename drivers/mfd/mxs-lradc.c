@@ -181,7 +181,7 @@ static int mxs_lradc_probe(struct platform_device *pdev)
 					MXS_LRADC_TOUCHSCREEN_5WIRE;
 				break;
 			}
-			/* fall through to an error message for i.MX23 */
+			/* fall through - to an error message for i.MX23 */
 		default:
 			dev_err(&pdev->dev,
 				"Unsupported number of touchscreen wires (%d)\n"
@@ -196,8 +196,10 @@ static int mxs_lradc_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, lradc);
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	if (!res)
-		return -ENOMEM;
+	if (!res) {
+		ret = -ENOMEM;
+		goto err_clk;
+	}
 
 	switch (lradc->soc) {
 	case IMX23_LRADC:

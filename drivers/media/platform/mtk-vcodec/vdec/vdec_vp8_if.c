@@ -120,7 +120,7 @@ struct vdec_vp8_hw_reg_base {
 /**
  * struct vdec_vp8_vpu_inst - VPU instance for VP8 decode
  * @wq_hd	: Wait queue to wait VPU message ack
- * @signaled	: 1 - Host has received ack message from VPU, 0 - not recevie
+ * @signaled	: 1 - Host has received ack message from VPU, 0 - not receive
  * @failure	: VPU execution result status 0 - success, others - fail
  * @inst_addr	: VPU decoder instance address
  */
@@ -155,7 +155,6 @@ struct vdec_vp8_vpu_inst {
  * @reg_base		   : HW register base address
  * @frm_cnt		   : decode frame count
  * @ctx			   : V4L2 context
- * @dev			   : platform device
  * @vpu			   : VPU instance for decoder
  * @vsi			   : VPU share information
  */

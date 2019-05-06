@@ -249,7 +249,7 @@ static int send_trespass_cmd(struct scsi_device *sdev,
 			    struct clariion_dh_data *csdev)
 {
 	unsigned char *page22;
-	unsigned char cdb[COMMAND_SIZE(MODE_SELECT)];
+	unsigned char cdb[MAX_COMMAND_SIZE];
 	int err, res = SCSI_DH_OK, len;
 	struct scsi_sense_hdr sshdr;
 	u64 req_flags = REQ_FAILFAST_DEV | REQ_FAILFAST_TRANSPORT |
@@ -341,17 +341,17 @@ static int clariion_check_sense(struct scsi_device *sdev,
 	return SCSI_RETURN_NOT_HANDLED;
 }
 
-static int clariion_prep_fn(struct scsi_device *sdev, struct request *req)
+static blk_status_t clariion_prep_fn(struct scsi_device *sdev,
+		struct request *req)
 {
 	struct clariion_dh_data *h = sdev->handler_data;
-	int ret = BLKPREP_OK;
 
 	if (h->lun_state != CLARIION_LUN_OWNED) {
-		ret = BLKPREP_KILL;
 		req->rq_flags |= RQF_QUIET;
+		return BLK_STS_IOERR;
 	}
-	return ret;
 
+	return BLK_STS_OK;
 }
 
 static int clariion_std_inquiry(struct scsi_device *sdev,
@@ -490,7 +490,7 @@ static int clariion_bus_attach(struct scsi_device *sdev)
 
 	h = kzalloc(sizeof(*h) , GFP_KERNEL);
 	if (!h)
-		return -ENOMEM;
+		return SCSI_DH_NOMEM;
 	h->lun_state = CLARIION_LUN_UNINITIALIZED;
 	h->default_sp = CLARIION_UNBOUND_LU;
 	h->current_sp = CLARIION_UNBOUND_LU;
@@ -510,11 +510,11 @@ static int clariion_bus_attach(struct scsi_device *sdev)
 		    h->default_sp + 'A');
 
 	sdev->handler_data = h;
-	return 0;
+	return SCSI_DH_OK;
 
 failed:
 	kfree(h);
-	return -EINVAL;
+	return err;
 }
 
 static void clariion_bus_detach(struct scsi_device *sdev)

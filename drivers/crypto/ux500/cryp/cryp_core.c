@@ -20,6 +20,7 @@
 #include <linux/irqreturn.h>
 #include <linux/klist.h>
 #include <linux/module.h>
+#include <linux/mod_devicetable.h>
 #include <linux/platform_device.h>
 #include <linux/regulator/consumer.h>
 #include <linux/semaphore.h>
@@ -555,7 +556,7 @@ static int cryp_set_dma_transfer(struct cryp_ctx *ctx,
 		desc = dmaengine_prep_slave_sg(channel,
 				ctx->device->dma.sg_src,
 				ctx->device->dma.sg_src_len,
-				direction, DMA_CTRL_ACK);
+				DMA_MEM_TO_DEV, DMA_CTRL_ACK);
 		break;
 
 	case DMA_FROM_DEVICE:
@@ -579,7 +580,7 @@ static int cryp_set_dma_transfer(struct cryp_ctx *ctx,
 		desc = dmaengine_prep_slave_sg(channel,
 				ctx->device->dma.sg_dst,
 				ctx->device->dma.sg_dst_len,
-				direction,
+				DMA_DEV_TO_MEM,
 				DMA_CTRL_ACK |
 				DMA_PREP_INTERRUPT);
 
@@ -594,6 +595,12 @@ static int cryp_set_dma_transfer(struct cryp_ctx *ctx,
 	}
 
 	cookie = dmaengine_submit(desc);
+	if (dma_submit_error(cookie)) {
+		dev_dbg(ctx->device->dev, "[%s]: DMA submission failed\n",
+			__func__);
+		return cookie;
+	}
+
 	dma_async_issue_pending(channel);
 
 	return 0;
@@ -993,10 +1000,11 @@ static int des_ablkcipher_setkey(struct crypto_ablkcipher *cipher,
 	}
 
 	ret = des_ekey(tmp, key);
-	if (unlikely(ret == 0) && (*flags & CRYPTO_TFM_REQ_WEAK_KEY)) {
+	if (unlikely(ret == 0) &&
+	    (*flags & CRYPTO_TFM_REQ_FORBID_WEAK_KEYS)) {
 		*flags |= CRYPTO_TFM_RES_WEAK_KEY;
-		pr_debug(DEV_DBG_NAME " [%s]: CRYPTO_TFM_REQ_WEAK_KEY",
-				__func__);
+		pr_debug(DEV_DBG_NAME " [%s]: CRYPTO_TFM_RES_WEAK_KEY",
+			 __func__);
 		return -EINVAL;
 	}
 
@@ -1027,18 +1035,19 @@ static int des3_ablkcipher_setkey(struct crypto_ablkcipher *cipher,
 	/* Checking key interdependency for weak key detection. */
 	if (unlikely(!((K[0] ^ K[2]) | (K[1] ^ K[3])) ||
 				!((K[2] ^ K[4]) | (K[3] ^ K[5]))) &&
-			(*flags & CRYPTO_TFM_REQ_WEAK_KEY)) {
+			(*flags & CRYPTO_TFM_REQ_FORBID_WEAK_KEYS)) {
 		*flags |= CRYPTO_TFM_RES_WEAK_KEY;
-		pr_debug(DEV_DBG_NAME " [%s]: CRYPTO_TFM_REQ_WEAK_KEY",
-				__func__);
+		pr_debug(DEV_DBG_NAME " [%s]: CRYPTO_TFM_RES_WEAK_KEY",
+			 __func__);
 		return -EINVAL;
 	}
 	for (i = 0; i < 3; i++) {
 		ret = des_ekey(tmp, key + i*DES_KEY_SIZE);
-		if (unlikely(ret == 0) && (*flags & CRYPTO_TFM_REQ_WEAK_KEY)) {
+		if (unlikely(ret == 0) &&
+		    (*flags & CRYPTO_TFM_REQ_FORBID_WEAK_KEYS)) {
 			*flags |= CRYPTO_TFM_RES_WEAK_KEY;
-			pr_debug(DEV_DBG_NAME " [%s]: "
-					"CRYPTO_TFM_REQ_WEAK_KEY", __func__);
+			pr_debug(DEV_DBG_NAME " [%s]: CRYPTO_TFM_RES_WEAK_KEY",
+				 __func__);
 			return -EINVAL;
 		}
 	}
@@ -1404,9 +1413,8 @@ static void cryp_algs_unregister_all(void)
 static int ux500_cryp_probe(struct platform_device *pdev)
 {
 	int ret;
-	int cryp_error = 0;
-	struct resource *res = NULL;
-	struct resource *res_irq = NULL;
+	struct resource *res;
+	struct resource *res_irq;
 	struct cryp_device_data *device_data;
 	struct cryp_protection_config prot = {
 		.privilege_access = CRYP_STATE_ENABLE
@@ -1416,7 +1424,6 @@ static int ux500_cryp_probe(struct platform_device *pdev)
 	dev_dbg(dev, "[%s]", __func__);
 	device_data = devm_kzalloc(dev, sizeof(*device_data), GFP_ATOMIC);
 	if (!device_data) {
-		dev_err(dev, "[%s]: kzalloc() failed!", __func__);
 		ret = -ENOMEM;
 		goto out;
 	}
@@ -1479,15 +1486,13 @@ static int ux500_cryp_probe(struct platform_device *pdev)
 		goto out_clk_unprepare;
 	}
 
-	cryp_error = cryp_check(device_data);
-	if (cryp_error != 0) {
-		dev_err(dev, "[%s]: cryp_init() failed!", __func__);
+	if (cryp_check(device_data)) {
+		dev_err(dev, "[%s]: cryp_check() failed!", __func__);
 		ret = -EINVAL;
 		goto out_power;
 	}
 
-	cryp_error = cryp_configure_protection(device_data, &prot);
-	if (cryp_error != 0) {
+	if (cryp_configure_protection(device_data, &prot)) {
 		dev_err(dev, "[%s]: cryp_configure_protection() failed!",
 			__func__);
 		ret = -EINVAL;
@@ -1751,7 +1756,6 @@ static void __exit ux500_cryp_mod_fini(void)
 {
 	pr_debug("[%s] is called!", __func__);
 	platform_driver_unregister(&cryp_driver);
-	return;
 }
 
 module_init(ux500_cryp_mod_init);

@@ -1,34 +1,10 @@
-/******************************************************************************
- *
- * Copyright(c) 2012  Realtek Corporation.
- *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms of version 2 of the GNU General Public License as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
- * more details.
- *
- * The full GNU General Public License is included in this distribution in the
- * file called LICENSE.
- *
- * Contact Information:
- * wlanfae <wlanfae@realtek.com>
- * Realtek Corporation, No. 2, Innovation Road II, Hsinchu Science Park,
- * Hsinchu 300, Taiwan.
- *
- * Larry Finger <Larry.Finger@lwfinger.net>
- *
- *****************************************************************************/
+/* SPDX-License-Identifier: GPL-2.0 */
+/* Copyright(c) 2012  Realtek Corporation.*/
 
 /*===========================================
  * The following is for 8821A 1ANT BT Co-exist definition
  *===========================================
  */
-#define	BT_AUTO_REPORT_ONLY_8821A_1ANT				0
-
 #define	BT_INFO_8821A_1ANT_B_FTP	BIT7
 #define	BT_INFO_8821A_1ANT_B_A2DP	BIT6
 #define	BT_INFO_8821A_1ANT_B_HID	BIT5
@@ -135,6 +111,7 @@ struct coex_dm_8821a_1ant {
 	u8	cur_retry_limit_type;
 	u8	pre_ampdu_time_type;
 	u8	cur_ampdu_time_type;
+	u32	arp_cnt;
 
 	u8	error_condition;
 };
@@ -155,6 +132,7 @@ struct coex_sta_8821a_1ant {
 	u32	low_priority_tx;
 	u32	low_priority_rx;
 	u8	bt_rssi;
+	bool	bt_tx_rx_mask;
 	u8	pre_bt_rssi_state;
 	u8	pre_wifi_rssi_state[4];
 	bool	c2h_bt_info_req_sent;
@@ -170,21 +148,24 @@ struct coex_sta_8821a_1ant {
  * The following is interface which will notify coex module.
  *===========================================
  */
-void ex_halbtc8821a1ant_init_hwconfig(struct btc_coexist *btcoexist);
-void ex_halbtc8821a1ant_init_coex_dm(struct btc_coexist *btcoexist);
-void ex_halbtc8821a1ant_ips_notify(struct btc_coexist *btcoexist, u8 type);
-void ex_halbtc8821a1ant_lps_notify(struct btc_coexist *btcoexist, u8 type);
-void ex_halbtc8821a1ant_scan_notify(struct btc_coexist *btcoexist, u8 type);
-void ex_halbtc8821a1ant_connect_notify(struct btc_coexist *btcoexist, u8 type);
-void ex_halbtc8821a1ant_media_status_notify(struct btc_coexist *btcoexist,
-					    u8 type);
-void ex_halbtc8821a1ant_special_packet_notify(struct btc_coexist *btcoexist,
-					      u8 type);
-void ex_halbtc8821a1ant_bt_info_notify(struct btc_coexist *btcoexist,
-				       u8 *tmpbuf, u8 length);
-void ex_halbtc8821a1ant_halt_notify(struct btc_coexist *btcoexist);
-void ex_halbtc8821a1ant_pnp_notify(struct btc_coexist *btcoexist, u8 pnpstate);
-void ex_halbtc8821a1ant_periodical(struct btc_coexist *btcoexist);
-void ex_halbtc8821a1ant_display_coex_info(struct btc_coexist *btcoexist);
-void ex_halbtc8821a1ant_dbg_control(struct btc_coexist *btcoexist, u8 op_code,
-				    u8 op_len, u8 *data);
+void ex_btc8821a1ant_init_hwconfig(struct btc_coexist *btcoexist,
+				   bool wifi_only);
+void ex_btc8821a1ant_init_coex_dm(struct btc_coexist *btcoexist);
+void ex_btc8821a1ant_ips_notify(struct btc_coexist *btcoexist, u8 type);
+void ex_btc8821a1ant_lps_notify(struct btc_coexist *btcoexist, u8 type);
+void ex_btc8821a1ant_scan_notify(struct btc_coexist *btcoexist, u8 type);
+void ex_btc8821a1ant_connect_notify(struct btc_coexist *btcoexist, u8 type);
+void ex_btc8821a1ant_media_status_notify(struct btc_coexist *btcoexist,
+					 u8 type);
+void ex_btc8821a1ant_special_packet_notify(struct btc_coexist *btcoexist,
+					   u8 type);
+void ex_btc8821a1ant_bt_info_notify(struct btc_coexist *btcoexist,
+				    u8 *tmpbuf, u8 length);
+void ex_btc8821a1ant_halt_notify(struct btc_coexist *btcoexist);
+void ex_btc8821a1ant_pnp_notify(struct btc_coexist *btcoexist, u8 pnpstate);
+void ex_btc8821a1ant_periodical(struct btc_coexist *btcoexist);
+void ex_btc8821a1ant_display_coex_info(struct btc_coexist *btcoexist,
+				       struct seq_file *m);
+void ex_btc8821a1ant_dbg_control(struct btc_coexist *btcoexist, u8 op_code,
+				 u8 op_len, u8 *data);
+void ex_btc8821a1ant_pnp_notify(struct btc_coexist *btcoexist, u8 pnp_state);

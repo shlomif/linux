@@ -1,23 +1,10 @@
+// SPDX-License-Identifier: GPL-2.0+
 /*
  *  lpc32xx_adc.c - Support for ADC in LPC32XX
  *
  *  3-channel, 10-bit ADC
  *
  *  Copyright (C) 2011, 2012 Roland Stigge <stigge@antcom.de>
- *
- *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2 of the License, or
- *  (at your option) any later version.
- *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
 #include <linux/module.h>
@@ -76,10 +63,14 @@ static int lpc32xx_read_raw(struct iio_dev *indio_dev,
 			    long mask)
 {
 	struct lpc32xx_adc_state *st = iio_priv(indio_dev);
-
+	int ret;
 	if (mask == IIO_CHAN_INFO_RAW) {
 		mutex_lock(&indio_dev->mlock);
-		clk_prepare_enable(st->clk);
+		ret = clk_prepare_enable(st->clk);
+		if (ret) {
+			mutex_unlock(&indio_dev->mlock);
+			return ret;
+		}
 		/* Measurement setup */
 		__raw_writel(LPC32XXAD_INTERNAL | (chan->address) |
 			     LPC32XXAD_REFp | LPC32XXAD_REFm,
@@ -100,7 +91,6 @@ static int lpc32xx_read_raw(struct iio_dev *indio_dev,
 
 static const struct iio_info lpc32xx_adc_iio_info = {
 	.read_raw = &lpc32xx_read_raw,
-	.driver_module = THIS_MODULE,
 };
 
 #define LPC32XX_ADC_CHANNEL(_index) {			\

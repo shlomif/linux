@@ -43,7 +43,7 @@ MODULE_AUTHOR("Larry Finger <Larry.Finger@lwfinger.net>");
 MODULE_DESCRIPTION("RTL8187/RTL8187B USB wireless driver");
 MODULE_LICENSE("GPL");
 
-static struct usb_device_id rtl8187_table[] = {
+static const struct usb_device_id rtl8187_table[] = {
 	/* Asus */
 	{USB_DEVICE(0x0b05, 0x171d), .driver_info = DEVICE_RTL8187},
 	/* Belkin */
@@ -278,8 +278,7 @@ static void rtl8187_tx(struct ieee80211_hw *dev,
 	}
 
 	if (!priv->is_rtl8187b) {
-		struct rtl8187_tx_hdr *hdr =
-			(struct rtl8187_tx_hdr *)skb_push(skb, sizeof(*hdr));
+		struct rtl8187_tx_hdr *hdr = skb_push(skb, sizeof(*hdr));
 		hdr->flags = cpu_to_le32(flags);
 		hdr->len = 0;
 		hdr->rts_duration = rts_dur;
@@ -292,8 +291,7 @@ static void rtl8187_tx(struct ieee80211_hw *dev,
 		unsigned int epmap[4] = { 6, 7, 5, 4 };
 		u16 fc = le16_to_cpu(tx_hdr->frame_control);
 
-		struct rtl8187b_tx_hdr *hdr =
-			(struct rtl8187b_tx_hdr *)skb_push(skb, sizeof(*hdr));
+		struct rtl8187b_tx_hdr *hdr = skb_push(skb, sizeof(*hdr));
 		struct ieee80211_rate *txrate =
 			ieee80211_get_tx_rate(dev, info);
 		memset(hdr, 0, sizeof(*hdr));
@@ -446,12 +444,13 @@ static int rtl8187_init_urbs(struct ieee80211_hw *dev)
 		skb_queue_tail(&priv->rx_queue, skb);
 		usb_anchor_urb(entry, &priv->anchored);
 		ret = usb_submit_urb(entry, GFP_KERNEL);
-		usb_put_urb(entry);
 		if (ret) {
 			skb_unlink(skb, &priv->rx_queue);
 			usb_unanchor_urb(entry);
+			usb_put_urb(entry);
 			goto err;
 		}
+		usb_put_urb(entry);
 	}
 	return ret;
 
@@ -501,7 +500,7 @@ static void rtl8187b_status_cb(struct urb *urb)
 	if (cmd_type == 1) {
 		unsigned int pkt_rc, seq_no;
 		bool tok;
-		struct sk_buff *skb;
+		struct sk_buff *skb, *iter;
 		struct ieee80211_hdr *ieee80211hdr;
 		unsigned long flags;
 
@@ -510,8 +509,9 @@ static void rtl8187b_status_cb(struct urb *urb)
 		seq_no = (val >> 16) & 0xFFF;
 
 		spin_lock_irqsave(&priv->b_tx_status.queue.lock, flags);
-		skb_queue_reverse_walk(&priv->b_tx_status.queue, skb) {
-			ieee80211hdr = (struct ieee80211_hdr *)skb->data;
+		skb = NULL;
+		skb_queue_reverse_walk(&priv->b_tx_status.queue, iter) {
+			ieee80211hdr = (struct ieee80211_hdr *)iter->data;
 
 			/*
 			 * While testing, it was discovered that the seq_no
@@ -524,10 +524,12 @@ static void rtl8187b_status_cb(struct urb *urb)
 			 * it's unlikely we wrongly ack some sent data
 			 */
 			if ((le16_to_cpu(ieee80211hdr->seq_ctrl)
-			    & 0xFFF) == seq_no)
+			     & 0xFFF) == seq_no) {
+				skb = iter;
 				break;
+			}
 		}
-		if (skb != (struct sk_buff *) &priv->b_tx_status.queue) {
+		if (skb) {
 			struct ieee80211_tx_info *info = IEEE80211_SKB_CB(skb);
 
 			__skb_unlink(skb, &priv->b_tx_status.queue);
@@ -1452,6 +1454,7 @@ static int rtl8187_probe(struct usb_interface *intf,
 		goto err_free_dev;
 	}
 	mutex_init(&priv->io_mutex);
+	mutex_init(&priv->conf_mutex);
 
 	SET_IEEE80211_DEV(dev, &intf->dev);
 	usb_set_intfdata(intf, dev);
@@ -1627,7 +1630,6 @@ static int rtl8187_probe(struct usb_interface *intf,
 		printk(KERN_ERR "rtl8187: Cannot register device\n");
 		goto err_free_dmabuf;
 	}
-	mutex_init(&priv->conf_mutex);
 	skb_queue_head_init(&priv->b_tx_status.queue);
 
 	wiphy_info(dev->wiphy, "hwaddr %pM, %s V%d + %s, rfkill mask %d\n",

@@ -88,14 +88,15 @@ static void i9xx_check_fifo_underruns(struct intel_crtc *crtc)
 {
 	struct drm_i915_private *dev_priv = to_i915(crtc->base.dev);
 	i915_reg_t reg = PIPESTAT(crtc->pipe);
-	u32 pipestat = I915_READ(reg) & 0xffff0000;
+	u32 enable_mask;
 
 	lockdep_assert_held(&dev_priv->irq_lock);
 
-	if ((pipestat & PIPE_FIFO_UNDERRUN_STATUS) == 0)
+	if ((I915_READ(reg) & PIPE_FIFO_UNDERRUN_STATUS) == 0)
 		return;
 
-	I915_WRITE(reg, pipestat | PIPE_FIFO_UNDERRUN_STATUS);
+	enable_mask = i915_pipestat_enable_mask(dev_priv, crtc->pipe);
+	I915_WRITE(reg, enable_mask | PIPE_FIFO_UNDERRUN_STATUS);
 	POSTING_READ(reg);
 
 	trace_intel_cpu_fifo_underrun(dev_priv, crtc->pipe);
@@ -108,15 +109,16 @@ static void i9xx_set_fifo_underrun_reporting(struct drm_device *dev,
 {
 	struct drm_i915_private *dev_priv = to_i915(dev);
 	i915_reg_t reg = PIPESTAT(pipe);
-	u32 pipestat = I915_READ(reg) & 0xffff0000;
 
 	lockdep_assert_held(&dev_priv->irq_lock);
 
 	if (enable) {
-		I915_WRITE(reg, pipestat | PIPE_FIFO_UNDERRUN_STATUS);
+		u32 enable_mask = i915_pipestat_enable_mask(dev_priv, pipe);
+
+		I915_WRITE(reg, enable_mask | PIPE_FIFO_UNDERRUN_STATUS);
 		POSTING_READ(reg);
 	} else {
-		if (old && pipestat & PIPE_FIFO_UNDERRUN_STATUS)
+		if (old && I915_READ(reg) & PIPE_FIFO_UNDERRUN_STATUS)
 			DRM_ERROR("pipe %c underrun\n", pipe_name(pipe));
 	}
 }
@@ -125,8 +127,8 @@ static void ironlake_set_fifo_underrun_reporting(struct drm_device *dev,
 						 enum pipe pipe, bool enable)
 {
 	struct drm_i915_private *dev_priv = to_i915(dev);
-	uint32_t bit = (pipe == PIPE_A) ? DE_PIPEA_FIFO_UNDERRUN :
-					  DE_PIPEB_FIFO_UNDERRUN;
+	u32 bit = (pipe == PIPE_A) ?
+		DE_PIPEA_FIFO_UNDERRUN : DE_PIPEB_FIFO_UNDERRUN;
 
 	if (enable)
 		ilk_enable_display_irq(dev_priv, bit);
@@ -138,7 +140,7 @@ static void ivybridge_check_fifo_underruns(struct intel_crtc *crtc)
 {
 	struct drm_i915_private *dev_priv = to_i915(crtc->base.dev);
 	enum pipe pipe = crtc->pipe;
-	uint32_t err_int = I915_READ(GEN7_ERR_INT);
+	u32 err_int = I915_READ(GEN7_ERR_INT);
 
 	lockdep_assert_held(&dev_priv->irq_lock);
 
@@ -187,12 +189,12 @@ static void broadwell_set_fifo_underrun_reporting(struct drm_device *dev,
 }
 
 static void ibx_set_fifo_underrun_reporting(struct drm_device *dev,
-					    enum transcoder pch_transcoder,
+					    enum pipe pch_transcoder,
 					    bool enable)
 {
 	struct drm_i915_private *dev_priv = to_i915(dev);
-	uint32_t bit = (pch_transcoder == TRANSCODER_A) ?
-		       SDE_TRANSA_FIFO_UNDER : SDE_TRANSB_FIFO_UNDER;
+	u32 bit = (pch_transcoder == PIPE_A) ?
+		SDE_TRANSA_FIFO_UNDER : SDE_TRANSB_FIFO_UNDER;
 
 	if (enable)
 		ibx_enable_display_interrupt(dev_priv, bit);
@@ -203,8 +205,8 @@ static void ibx_set_fifo_underrun_reporting(struct drm_device *dev,
 static void cpt_check_pch_fifo_underruns(struct intel_crtc *crtc)
 {
 	struct drm_i915_private *dev_priv = to_i915(crtc->base.dev);
-	enum transcoder pch_transcoder = (enum transcoder) crtc->pipe;
-	uint32_t serr_int = I915_READ(SERR_INT);
+	enum pipe pch_transcoder = crtc->pipe;
+	u32 serr_int = I915_READ(SERR_INT);
 
 	lockdep_assert_held(&dev_priv->irq_lock);
 
@@ -215,12 +217,12 @@ static void cpt_check_pch_fifo_underruns(struct intel_crtc *crtc)
 	POSTING_READ(SERR_INT);
 
 	trace_intel_pch_fifo_underrun(dev_priv, pch_transcoder);
-	DRM_ERROR("pch fifo underrun on pch transcoder %s\n",
-		  transcoder_name(pch_transcoder));
+	DRM_ERROR("pch fifo underrun on pch transcoder %c\n",
+		  pipe_name(pch_transcoder));
 }
 
 static void cpt_set_fifo_underrun_reporting(struct drm_device *dev,
-					    enum transcoder pch_transcoder,
+					    enum pipe pch_transcoder,
 					    bool enable, bool old)
 {
 	struct drm_i915_private *dev_priv = to_i915(dev);
@@ -238,8 +240,8 @@ static void cpt_set_fifo_underrun_reporting(struct drm_device *dev,
 
 		if (old && I915_READ(SERR_INT) &
 		    SERR_INT_TRANS_FIFO_UNDERRUN(pch_transcoder)) {
-			DRM_ERROR("uncleared pch fifo underrun on pch transcoder %s\n",
-				  transcoder_name(pch_transcoder));
+			DRM_ERROR("uncleared pch fifo underrun on pch transcoder %c\n",
+				  pipe_name(pch_transcoder));
 		}
 	}
 }
@@ -256,13 +258,13 @@ static bool __intel_set_cpu_fifo_underrun_reporting(struct drm_device *dev,
 	old = !crtc->cpu_fifo_underrun_disabled;
 	crtc->cpu_fifo_underrun_disabled = !enable;
 
-	if (HAS_GMCH_DISPLAY(dev_priv))
+	if (HAS_GMCH(dev_priv))
 		i9xx_set_fifo_underrun_reporting(dev, pipe, enable, old);
-	else if (IS_GEN5(dev_priv) || IS_GEN6(dev_priv))
+	else if (IS_GEN_RANGE(dev_priv, 5, 6))
 		ironlake_set_fifo_underrun_reporting(dev, pipe, enable);
-	else if (IS_GEN7(dev_priv))
+	else if (IS_GEN(dev_priv, 7))
 		ivybridge_set_fifo_underrun_reporting(dev, pipe, enable, old);
-	else if (IS_GEN8(dev_priv) || IS_GEN9(dev_priv))
+	else if (INTEL_GEN(dev_priv) >= 8)
 		broadwell_set_fifo_underrun_reporting(dev, pipe, enable);
 
 	return old;
@@ -313,11 +315,11 @@ bool intel_set_cpu_fifo_underrun_reporting(struct drm_i915_private *dev_priv,
  * Returns the previous state of underrun reporting.
  */
 bool intel_set_pch_fifo_underrun_reporting(struct drm_i915_private *dev_priv,
-					   enum transcoder pch_transcoder,
+					   enum pipe pch_transcoder,
 					   bool enable)
 {
 	struct intel_crtc *crtc =
-		intel_get_crtc_for_pipe(dev_priv, (enum pipe) pch_transcoder);
+		intel_get_crtc_for_pipe(dev_priv, pch_transcoder);
 	unsigned long flags;
 	bool old;
 
@@ -367,7 +369,7 @@ void intel_cpu_fifo_underrun_irq_handler(struct drm_i915_private *dev_priv,
 		return;
 
 	/* GMCH can't disable fifo underruns, filter them. */
-	if (HAS_GMCH_DISPLAY(dev_priv) &&
+	if (HAS_GMCH(dev_priv) &&
 	    crtc->cpu_fifo_underrun_disabled)
 		return;
 
@@ -390,13 +392,13 @@ void intel_cpu_fifo_underrun_irq_handler(struct drm_i915_private *dev_priv,
  * interrupt to avoid an irq storm.
  */
 void intel_pch_fifo_underrun_irq_handler(struct drm_i915_private *dev_priv,
-					 enum transcoder pch_transcoder)
+					 enum pipe pch_transcoder)
 {
 	if (intel_set_pch_fifo_underrun_reporting(dev_priv, pch_transcoder,
 						  false)) {
 		trace_intel_pch_fifo_underrun(dev_priv, pch_transcoder);
-		DRM_ERROR("PCH transcoder %s FIFO underrun\n",
-			  transcoder_name(pch_transcoder));
+		DRM_ERROR("PCH transcoder %c FIFO underrun\n",
+			  pipe_name(pch_transcoder));
 	}
 }
 
@@ -419,9 +421,9 @@ void intel_check_cpu_fifo_underruns(struct drm_i915_private *dev_priv)
 		if (crtc->cpu_fifo_underrun_disabled)
 			continue;
 
-		if (HAS_GMCH_DISPLAY(dev_priv))
+		if (HAS_GMCH(dev_priv))
 			i9xx_check_fifo_underruns(crtc);
-		else if (IS_GEN7(dev_priv))
+		else if (IS_GEN(dev_priv, 7))
 			ivybridge_check_fifo_underruns(crtc);
 	}
 

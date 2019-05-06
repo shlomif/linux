@@ -13,7 +13,8 @@
  */
 
 #include <linux/kernel.h>
-#include <linux/module.h>
+#include <linux/init.h>
+#include <linux/export.h>
 #include <linux/bcd.h>
 #include <linux/delay.h>
 #include <linux/mfd/core.h>
@@ -1766,7 +1767,7 @@ int wm831x_device_init(struct wm831x *wm831x, int irq)
 	}
 	wm831x->locked = 1;
 
-	if (pdata && pdata->pre_init) {
+	if (pdata->pre_init) {
 		ret = pdata->pre_init(wm831x);
 		if (ret != 0) {
 			dev_err(wm831x->dev, "pre_init() failed: %d\n", ret);
@@ -1774,19 +1775,17 @@ int wm831x_device_init(struct wm831x *wm831x, int irq)
 		}
 	}
 
-	if (pdata) {
-		for (i = 0; i < ARRAY_SIZE(pdata->gpio_defaults); i++) {
-			if (!pdata->gpio_defaults[i])
-				continue;
+	for (i = 0; i < ARRAY_SIZE(pdata->gpio_defaults); i++) {
+		if (!pdata->gpio_defaults[i])
+			continue;
 
-			wm831x_reg_write(wm831x,
-					 WM831X_GPIO1_CONTROL + i,
-					 pdata->gpio_defaults[i] & 0xffff);
-		}
+		wm831x_reg_write(wm831x,
+				 WM831X_GPIO1_CONTROL + i,
+				 pdata->gpio_defaults[i] & 0xffff);
 	}
 
 	/* Multiply by 10 as we have many subdevices of the same type */
-	if (pdata && pdata->wm831x_num)
+	if (pdata->wm831x_num)
 		wm831x_num = pdata->wm831x_num * 10;
 	else
 		wm831x_num = -1;
@@ -1809,7 +1808,7 @@ int wm831x_device_init(struct wm831x *wm831x, int irq)
 		ret = mfd_add_devices(wm831x->dev, wm831x_num,
 				      wm8311_devs, ARRAY_SIZE(wm8311_devs),
 				      NULL, 0, NULL);
-		if (!pdata || !pdata->disable_touch)
+		if (!pdata->disable_touch)
 			mfd_add_devices(wm831x->dev, wm831x_num,
 					touch_devs, ARRAY_SIZE(touch_devs),
 					NULL, 0, NULL);
@@ -1819,7 +1818,7 @@ int wm831x_device_init(struct wm831x *wm831x, int irq)
 		ret = mfd_add_devices(wm831x->dev, wm831x_num,
 				      wm8312_devs, ARRAY_SIZE(wm8312_devs),
 				      NULL, 0, NULL);
-		if (!pdata || !pdata->disable_touch)
+		if (!pdata->disable_touch)
 			mfd_add_devices(wm831x->dev, wm831x_num,
 					touch_devs, ARRAY_SIZE(touch_devs),
 					NULL, 0, NULL);
@@ -1865,7 +1864,7 @@ int wm831x_device_init(struct wm831x *wm831x, int irq)
 		dev_info(wm831x->dev, "32.768kHz clock disabled, no RTC\n");
 	}
 
-	if (pdata && pdata->backlight) {
+	if (pdata->backlight) {
 		/* Treat errors as non-critical */
 		ret = mfd_add_devices(wm831x->dev, wm831x_num, backlight_devs,
 				      ARRAY_SIZE(backlight_devs), NULL,
@@ -1877,7 +1876,7 @@ int wm831x_device_init(struct wm831x *wm831x, int irq)
 
 	wm831x_otp_init(wm831x);
 
-	if (pdata && pdata->post_init) {
+	if (pdata->post_init) {
 		ret = pdata->post_init(wm831x);
 		if (ret != 0) {
 			dev_err(wm831x->dev, "post_init() failed: %d\n", ret);
@@ -1892,14 +1891,6 @@ err_irq:
 err:
 	mfd_remove_devices(wm831x->dev);
 	return ret;
-}
-
-void wm831x_device_exit(struct wm831x *wm831x)
-{
-	wm831x_otp_exit(wm831x);
-	mfd_remove_devices(wm831x->dev);
-	free_irq(wm831x_irq(wm831x, WM831X_IRQ_AUXADC_DATA), wm831x);
-	wm831x_irq_exit(wm831x);
 }
 
 int wm831x_device_suspend(struct wm831x *wm831x)
@@ -1946,7 +1937,3 @@ void wm831x_device_shutdown(struct wm831x *wm831x)
 	}
 }
 EXPORT_SYMBOL_GPL(wm831x_device_shutdown);
-
-MODULE_DESCRIPTION("Core support for the WM831X AudioPlus PMIC");
-MODULE_LICENSE("GPL");
-MODULE_AUTHOR("Mark Brown");

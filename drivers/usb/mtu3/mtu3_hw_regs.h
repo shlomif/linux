@@ -1,19 +1,10 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * mtu3_hw_regs.h - MediaTek USB3 DRD register and field definitions
  *
  * Copyright (C) 2016 MediaTek Inc.
  *
  * Author: Chunfeng Yun <chunfeng.yun@mediatek.com>
- *
- * This software is licensed under the terms of the GNU General Public
- * License version 2, as published by the Free Software Foundation, and
- * may be copied, distributed, and modified under those terms.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
  */
 
 #ifndef _SSUSB_HW_REGS_H_
@@ -58,6 +49,8 @@
 #define U3D_QCR1		(SSUSB_DEV_BASE + 0x0404)
 #define U3D_QCR2		(SSUSB_DEV_BASE + 0x0408)
 #define U3D_QCR3		(SSUSB_DEV_BASE + 0x040C)
+#define U3D_TXQHIAR1		(SSUSB_DEV_BASE + 0x0484)
+#define U3D_RXQHIAR1		(SSUSB_DEV_BASE + 0x04C4)
 
 #define U3D_TXQCSR1		(SSUSB_DEV_BASE + 0x0510)
 #define U3D_TXQSAR1		(SSUSB_DEV_BASE + 0x0514)
@@ -111,6 +104,7 @@
 
 /* U3D_EPISR */
 #define EPRISR(x)		(BIT(16) << (x))
+#define SETUPENDISR		BIT(16)
 #define EPTISR(x)		(BIT(0) << (x))
 #define EP0ISR			BIT(0)
 
@@ -189,6 +183,13 @@
 #define QMU_RX_COZ(x)		(BIT(16) << (x))
 #define QMU_RX_ZLP(x)		(BIT(0) << (x))
 
+/* U3D_TXQHIAR1 */
+/* U3D_RXQHIAR1 */
+#define QMU_LAST_DONE_PTR_HI(x)	(((x) >> 16) & 0xf)
+#define QMU_CUR_GPD_ADDR_HI(x)	(((x) >> 8) & 0xf)
+#define QMU_START_ADDR_HI_MSK	GENMASK(3, 0)
+#define QMU_START_ADDR_HI(x)	(((x) & 0xf) << 0)
+
 /* U3D_TXQCSR1 */
 /* U3D_RXQCSR1 */
 #define QMU_Q_ACTIVE		BIT(15)
@@ -225,6 +226,7 @@
 #define CAP_TX_EP_NUM(x)	((x) & 0x1f)
 
 /* U3D_MISC_CTRL */
+#define DMA_ADDR_36BIT		BIT(31)
 #define VBUS_ON			BIT(1)
 #define VBUS_FRC_EN		BIT(0)
 
@@ -266,6 +268,8 @@
 #define U3D_LTSSM_INTR_ENABLE	(SSUSB_USB3_MAC_CSR_BASE + 0x013C)
 #define U3D_LTSSM_INTR		(SSUSB_USB3_MAC_CSR_BASE + 0x0140)
 
+#define U3D_U3U2_SWITCH_CTRL	(SSUSB_USB3_MAC_CSR_BASE + 0x0170)
+
 /*---------------- SSUSB_USB3_MAC_CSR FIELD DEFINITION ----------------*/
 
 /* U3D_LTSSM_CTRL */
@@ -299,6 +303,9 @@
 #define COMPLIANCE_INTR		BIT(2)
 #define SS_DISABLE_INTR		BIT(1)
 #define SS_INACTIVE_INTR	BIT(0)
+
+/* U3D_U3U2_SWITCH_CTRL */
+#define SOFTCON_CLR_AUTO_EN	BIT(0)
 
 /*---------------- SSUSB_USB3_SYS_CSR REGISTER DEFINITION ----------------*/
 
@@ -457,15 +464,21 @@
 #define SSUSB_VBUS_CHG_INT_B_EN		BIT(6)
 
 /* U3D_SSUSB_U3_CTRL_0P */
+#define SSUSB_U3_PORT_SSP_SPEED	BIT(9)
+#define SSUSB_U3_PORT_DUAL_MODE	BIT(7)
 #define SSUSB_U3_PORT_HOST_SEL		BIT(2)
 #define SSUSB_U3_PORT_PDN		BIT(1)
 #define SSUSB_U3_PORT_DIS		BIT(0)
 
 /* U3D_SSUSB_U2_CTRL_0P */
+#define SSUSB_U2_PORT_RG_IDDIG		BIT(12)
+#define SSUSB_U2_PORT_FORCE_IDDIG	BIT(11)
+#define SSUSB_U2_PORT_VBUSVALID	BIT(9)
 #define SSUSB_U2_PORT_OTG_SEL		BIT(7)
-#define SSUSB_U2_PORT_HOST_SEL		BIT(2)
+#define SSUSB_U2_PORT_HOST		BIT(2)
 #define SSUSB_U2_PORT_PDN		BIT(1)
 #define SSUSB_U2_PORT_DIS		BIT(0)
+#define SSUSB_U2_PORT_HOST_SEL	(SSUSB_U2_PORT_VBUSVALID | SSUSB_U2_PORT_HOST)
 
 /* U3D_SSUSB_DEV_RST_CTRL */
 #define SSUSB_DEV_SW_RST		BIT(0)

@@ -16,6 +16,7 @@
 #include <linux/err.h>
 #include <linux/module.h>
 #include <linux/of.h>
+#include <linux/of_graph.h>
 #include <linux/seq_file.h>
 
 #include <video/omapfb_dss.h>
@@ -59,7 +60,7 @@ omapdss_of_get_next_port(const struct device_node *parent,
 				return NULL;
 			}
 			prev = port;
-		} while (of_node_cmp(port->name, "port") != 0);
+		} while (!of_node_name_eq(port, "port"));
 
 		of_node_put(ports);
 	}
@@ -82,7 +83,7 @@ omapdss_of_get_next_endpoint(const struct device_node *parent,
 		if (!ep)
 			return NULL;
 		prev = ep;
-	} while (of_node_cmp(ep->name, "endpoint") != 0);
+	} while (!of_node_name_eq(ep, "endpoint"));
 
 	return ep;
 }
@@ -128,7 +129,7 @@ static struct device_node *omapdss_of_get_remote_port(const struct device_node *
 {
 	struct device_node *np;
 
-	np = of_parse_phandle(node, "remote-endpoint", 0);
+	np = of_graph_get_remote_endpoint(node);
 	if (!np)
 		return NULL;
 

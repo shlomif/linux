@@ -1,3 +1,5 @@
+.. SPDX-License-Identifier: GPL-2.0
+
 The Virtual Video Test Driver (vivid)
 =====================================
 
@@ -829,6 +831,7 @@ The following two controls are only valid for video and vbi capture.
 The following two controls are only valid for video capture.
 
 - DV Timings Signal Mode:
+
 	selects the behavior of VIDIOC_QUERY_DV_TIMINGS: what
 	should it return?
 

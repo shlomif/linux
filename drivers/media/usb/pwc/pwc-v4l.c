@@ -492,8 +492,8 @@ static int pwc_querycap(struct file *file, void *fh, struct v4l2_capability *cap
 {
 	struct pwc_device *pdev = video_drvdata(file);
 
-	strcpy(cap->driver, PWC_NAME);
-	strlcpy(cap->card, pdev->vdev.name, sizeof(cap->card));
+	strscpy(cap->driver, PWC_NAME, sizeof(cap->driver));
+	strscpy(cap->card, pdev->vdev.name, sizeof(cap->card));
 	usb_make_path(pdev->udev, cap->bus_info, sizeof(cap->bus_info));
 	cap->device_caps = V4L2_CAP_VIDEO_CAPTURE | V4L2_CAP_STREAMING |
 					V4L2_CAP_READWRITE;
@@ -506,7 +506,7 @@ static int pwc_enum_input(struct file *file, void *fh, struct v4l2_input *i)
 	if (i->index)	/* Only one INPUT is supported */
 		return -EINVAL;
 
-	strlcpy(i->name, "Camera", sizeof(i->name));
+	strscpy(i->name, "Camera", sizeof(i->name));
 	i->type = V4L2_INPUT_TYPE_CAMERA;
 	return 0;
 }
@@ -568,7 +568,8 @@ static int pwc_g_volatile_ctrl(struct v4l2_ctrl *ctrl)
 		pdev->gain_valid = true;
 		if (!DEVICE_USE_CODEC3(pdev->type))
 			break;
-		/* Fall through for CODEC3 where autogain also controls expo */
+		/* For CODEC3 where autogain also controls expo */
+		/* fall through */
 	case V4L2_CID_EXPOSURE_AUTO:
 		if (pdev->exposure_valid && time_before(jiffies,
 				pdev->last_exposure_update + HZ / 4)) {
@@ -888,11 +889,13 @@ static int pwc_enum_fmt_vid_cap(struct file *file, void *fh, struct v4l2_fmtdesc
 		/* RAW format */
 		f->pixelformat = pdev->type <= 646 ? V4L2_PIX_FMT_PWC1 : V4L2_PIX_FMT_PWC2;
 		f->flags = V4L2_FMT_FLAG_COMPRESSED;
-		strlcpy(f->description, "Raw Philips Webcam", sizeof(f->description));
+		strscpy(f->description, "Raw Philips Webcam",
+			sizeof(f->description));
 		break;
 	case 1:
 		f->pixelformat = V4L2_PIX_FMT_YUV420;
-		strlcpy(f->description, "4:2:0, planar, Y-Cb-Cr", sizeof(f->description));
+		strscpy(f->description, "4:2:0, planar, Y-Cb-Cr",
+			sizeof(f->description));
 		break;
 	default:
 		return -EINVAL;

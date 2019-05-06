@@ -1,4 +1,5 @@
-/* Copyright (C) 2009-2017  B.A.T.M.A.N. contributors:
+/* SPDX-License-Identifier: GPL-2.0 */
+/* Copyright (C) 2009-2019  B.A.T.M.A.N. contributors:
  *
  * Marek Lindner
  *
@@ -24,19 +25,14 @@
 
 struct net_device;
 
-enum batadv_gw_modes {
-	BATADV_GW_MODE_OFF,
-	BATADV_GW_MODE_CLIENT,
-	BATADV_GW_MODE_SERVER,
-};
-
 /**
  * enum batadv_bandwidth_units - bandwidth unit types
- * @BATADV_BW_UNIT_KBIT: unit type kbit
- * @BATADV_BW_UNIT_MBIT: unit type mbit
  */
 enum batadv_bandwidth_units {
+	/** @BATADV_BW_UNIT_KBIT: unit type kbit */
 	BATADV_BW_UNIT_KBIT,
+
+	/** @BATADV_BW_UNIT_MBIT: unit type mbit */
 	BATADV_BW_UNIT_MBIT,
 };
 

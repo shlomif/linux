@@ -140,9 +140,15 @@ static int mpls_xmit(struct sk_buff *skb)
 	if (rt)
 		err = neigh_xmit(NEIGH_ARP_TABLE, out_dev, &rt->rt_gateway,
 				 skb);
-	else if (rt6)
-		err = neigh_xmit(NEIGH_ND_TABLE, out_dev, &rt6->rt6i_gateway,
-				 skb);
+	else if (rt6) {
+		if (ipv6_addr_v4mapped(&rt6->rt6i_gateway)) {
+			/* 6PE (RFC 4798) */
+			err = neigh_xmit(NEIGH_ARP_TABLE, out_dev, &rt6->rt6i_gateway.s6_addr32[3],
+					 skb);
+		} else
+			err = neigh_xmit(NEIGH_ND_TABLE, out_dev, &rt6->rt6i_gateway,
+					 skb);
+	}
 	if (err)
 		net_dbg_ratelimited("%s: packet transmission failed: %d\n",
 				    __func__, err);
@@ -159,7 +165,8 @@ drop:
 
 static int mpls_build_state(struct nlattr *nla,
 			    unsigned int family, const void *cfg,
-			    struct lwtunnel_state **ts)
+			    struct lwtunnel_state **ts,
+			    struct netlink_ext_ack *extack)
 {
 	struct mpls_iptunnel_encap *tun_encap_info;
 	struct nlattr *tb[MPLS_IPTUNNEL_MAX + 1];
@@ -168,27 +175,29 @@ static int mpls_build_state(struct nlattr *nla,
 	int ret;
 
 	ret = nla_parse_nested(tb, MPLS_IPTUNNEL_MAX, nla,
-			       mpls_iptunnel_policy, NULL);
+			       mpls_iptunnel_policy, extack);
 	if (ret < 0)
 		return ret;
 
-	if (!tb[MPLS_IPTUNNEL_DST])
+	if (!tb[MPLS_IPTUNNEL_DST]) {
+		NL_SET_ERR_MSG(extack, "MPLS_IPTUNNEL_DST attribute is missing");
 		return -EINVAL;
-
+	}
 
 	/* determine number of labels */
-	if (nla_get_labels(tb[MPLS_IPTUNNEL_DST],
-			   MAX_NEW_LABELS, &n_labels, NULL))
+	if (nla_get_labels(tb[MPLS_IPTUNNEL_DST], MAX_NEW_LABELS,
+			   &n_labels, NULL, extack))
 		return -EINVAL;
 
-	newts = lwtunnel_state_alloc(sizeof(*tun_encap_info) +
-				     n_labels * sizeof(u32));
+	newts = lwtunnel_state_alloc(struct_size(tun_encap_info, label,
+						 n_labels));
 	if (!newts)
 		return -ENOMEM;
 
 	tun_encap_info = mpls_lwtunnel_encap(newts);
 	ret = nla_get_labels(tb[MPLS_IPTUNNEL_DST], n_labels,
-			     &tun_encap_info->labels, tun_encap_info->label);
+			     &tun_encap_info->labels, tun_encap_info->label,
+			     extack);
 	if (ret)
 		goto errout;
 
@@ -221,7 +230,7 @@ static int mpls_fill_encap_info(struct sk_buff *skb,
 				struct lwtunnel_state *lwtstate)
 {
 	struct mpls_iptunnel_encap *tun_encap_info;
-	
+
 	tun_encap_info = mpls_lwtunnel_encap(lwtstate);
 
 	if (nla_put_labels(skb, MPLS_IPTUNNEL_DST, tun_encap_info->labels,

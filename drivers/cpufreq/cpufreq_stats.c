@@ -27,31 +27,31 @@ struct cpufreq_stats {
 	unsigned int *trans_table;
 };
 
-static int cpufreq_stats_update(struct cpufreq_stats *stats)
+static void cpufreq_stats_update(struct cpufreq_stats *stats)
 {
 	unsigned long long cur_time = get_jiffies_64();
 
-	spin_lock(&cpufreq_stats_lock);
 	stats->time_in_state[stats->last_index] += cur_time - stats->last_time;
 	stats->last_time = cur_time;
-	spin_unlock(&cpufreq_stats_lock);
-	return 0;
 }
 
 static void cpufreq_stats_clear_table(struct cpufreq_stats *stats)
 {
 	unsigned int count = stats->max_state;
 
+	spin_lock(&cpufreq_stats_lock);
 	memset(stats->time_in_state, 0, count * sizeof(u64));
 	memset(stats->trans_table, 0, count * count * sizeof(int));
 	stats->last_time = get_jiffies_64();
 	stats->total_trans = 0;
+	spin_unlock(&cpufreq_stats_lock);
 }
 
 static ssize_t show_total_trans(struct cpufreq_policy *policy, char *buf)
 {
 	return sprintf(buf, "%d\n", policy->stats->total_trans);
 }
+cpufreq_freq_attr_ro(total_trans);
 
 static ssize_t show_time_in_state(struct cpufreq_policy *policy, char *buf)
 {
@@ -62,7 +62,10 @@ static ssize_t show_time_in_state(struct cpufreq_policy *policy, char *buf)
 	if (policy->fast_switch_enabled)
 		return 0;
 
+	spin_lock(&cpufreq_stats_lock);
 	cpufreq_stats_update(stats);
+	spin_unlock(&cpufreq_stats_lock);
+
 	for (i = 0; i < stats->state_num; i++) {
 		len += sprintf(buf + len, "%u %llu\n", stats->freq_table[i],
 			(unsigned long long)
@@ -70,6 +73,7 @@ static ssize_t show_time_in_state(struct cpufreq_policy *policy, char *buf)
 	}
 	return len;
 }
+cpufreq_freq_attr_ro(time_in_state);
 
 static ssize_t store_reset(struct cpufreq_policy *policy, const char *buf,
 			   size_t count)
@@ -78,6 +82,7 @@ static ssize_t store_reset(struct cpufreq_policy *policy, const char *buf,
 	cpufreq_stats_clear_table(policy->stats);
 	return count;
 }
+cpufreq_freq_attr_wo(reset);
 
 static ssize_t show_trans_table(struct cpufreq_policy *policy, char *buf)
 {
@@ -118,15 +123,14 @@ static ssize_t show_trans_table(struct cpufreq_policy *policy, char *buf)
 			break;
 		len += snprintf(buf + len, PAGE_SIZE - len, "\n");
 	}
-	if (len >= PAGE_SIZE)
-		return PAGE_SIZE;
+
+	if (len >= PAGE_SIZE) {
+		pr_warn_once("cpufreq transition table exceeds PAGE_SIZE. Disabling\n");
+		return -EFBIG;
+	}
 	return len;
 }
 cpufreq_freq_attr_ro(trans_table);
-
-cpufreq_freq_attr_ro(total_trans);
-cpufreq_freq_attr_ro(time_in_state);
-cpufreq_freq_attr_wo(reset);
 
 static struct attribute *default_attrs[] = {
 	&total_trans.attr,
@@ -135,7 +139,7 @@ static struct attribute *default_attrs[] = {
 	&trans_table.attr,
 	NULL
 };
-static struct attribute_group stats_attr_group = {
+static const struct attribute_group stats_attr_group = {
 	.attrs = default_attrs,
 	.name = "stats"
 };
@@ -170,11 +174,10 @@ void cpufreq_stats_create_table(struct cpufreq_policy *policy)
 	unsigned int i = 0, count = 0, ret = -ENOMEM;
 	struct cpufreq_stats *stats;
 	unsigned int alloc_size;
-	struct cpufreq_frequency_table *pos, *table;
+	struct cpufreq_frequency_table *pos;
 
-	/* We need cpufreq table for creating stats table */
-	table = policy->freq_table;
-	if (unlikely(!table))
+	count = cpufreq_table_count_valid_entries(policy);
+	if (!count)
 		return;
 
 	/* stats already initialized */
@@ -184,10 +187,6 @@ void cpufreq_stats_create_table(struct cpufreq_policy *policy)
 	stats = kzalloc(sizeof(*stats), GFP_KERNEL);
 	if (!stats)
 		return;
-
-	/* Find total allocation size */
-	cpufreq_for_each_valid_entry(pos, table)
-		count++;
 
 	alloc_size = count * sizeof(int) + count * sizeof(u64);
 
@@ -205,7 +204,7 @@ void cpufreq_stats_create_table(struct cpufreq_policy *policy)
 	stats->max_state = count;
 
 	/* Find valid-unique entries */
-	cpufreq_for_each_valid_entry(pos, table)
+	cpufreq_for_each_valid_entry(pos, policy->freq_table)
 		if (freq_table_get_index(stats, pos->frequency) == -1)
 			stats->freq_table[i++] = pos->frequency;
 
@@ -243,9 +242,11 @@ void cpufreq_stats_record_transition(struct cpufreq_policy *policy,
 	if (old_index == -1 || new_index == -1 || old_index == new_index)
 		return;
 
+	spin_lock(&cpufreq_stats_lock);
 	cpufreq_stats_update(stats);
 
 	stats->last_index = new_index;
 	stats->trans_table[old_index * stats->max_state + new_index]++;
 	stats->total_trans++;
+	spin_unlock(&cpufreq_stats_lock);
 }

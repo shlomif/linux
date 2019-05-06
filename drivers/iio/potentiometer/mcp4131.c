@@ -42,6 +42,7 @@
 #include <linux/module.h>
 #include <linux/mutex.h>
 #include <linux/of.h>
+#include <linux/of_device.h>
 #include <linux/spi/spi.h>
 
 #define MCP4131_WRITE		(0x00 << 2)
@@ -237,14 +238,13 @@ static int mcp4131_write_raw(struct iio_dev *indio_dev,
 static const struct iio_info mcp4131_info = {
 	.read_raw = mcp4131_read_raw,
 	.write_raw = mcp4131_write_raw,
-	.driver_module = THIS_MODULE,
 };
 
 static int mcp4131_probe(struct spi_device *spi)
 {
 	int err;
 	struct device *dev = &spi->dev;
-	unsigned long devid = spi_get_device_id(spi)->driver_data;
+	unsigned long devid;
 	struct mcp4131_data *data;
 	struct iio_dev *indio_dev;
 
@@ -255,7 +255,11 @@ static int mcp4131_probe(struct spi_device *spi)
 	data = iio_priv(indio_dev);
 	spi_set_drvdata(spi, indio_dev);
 	data->spi = spi;
-	data->cfg = &mcp4131_cfg[devid];
+	data->cfg = of_device_get_match_data(&spi->dev);
+	if (!data->cfg) {
+		devid = spi_get_device_id(spi)->driver_data;
+		data->cfg = &mcp4131_cfg[devid];
+	}
 
 	mutex_init(&data->lock);
 
@@ -274,7 +278,6 @@ static int mcp4131_probe(struct spi_device *spi)
 	return 0;
 }
 
-#if defined(CONFIG_OF)
 static const struct of_device_id mcp4131_dt_ids[] = {
 	{ .compatible = "microchip,mcp4131-502",
 		.data = &mcp4131_cfg[MCP413x_502] },
@@ -407,7 +410,6 @@ static const struct of_device_id mcp4131_dt_ids[] = {
 	{}
 };
 MODULE_DEVICE_TABLE(of, mcp4131_dt_ids);
-#endif /* CONFIG_OF */
 
 static const struct spi_device_id mcp4131_id[] = {
 	{ "mcp4131-502", MCP413x_502 },

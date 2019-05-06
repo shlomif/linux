@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Stack dumping functions
  *
@@ -29,7 +30,7 @@
  * The stack trace can start at any of the three stacks and can potentially
  * touch all of them. The order is: panic stack, async stack, sync stack.
  */
-static unsigned long
+static unsigned long __no_sanitize_address
 __dump_trace(dump_trace_func_t func, void *data, unsigned long sp,
 	     unsigned long low, unsigned long high)
 {
@@ -76,11 +77,11 @@ void dump_trace(dump_trace_func_t func, void *data, struct task_struct *task,
 	frame_size = STACK_FRAME_OVERHEAD + sizeof(struct pt_regs);
 #ifdef CONFIG_CHECK_STACK
 	sp = __dump_trace(func, data, sp,
-			  S390_lowcore.panic_stack + frame_size - 4096,
-			  S390_lowcore.panic_stack + frame_size);
+			  S390_lowcore.nodat_stack + frame_size - THREAD_SIZE,
+			  S390_lowcore.nodat_stack + frame_size);
 #endif
 	sp = __dump_trace(func, data, sp,
-			  S390_lowcore.async_stack + frame_size - ASYNC_SIZE,
+			  S390_lowcore.async_stack + frame_size - THREAD_SIZE,
 			  S390_lowcore.async_stack + frame_size);
 	task = task ?: current;
 	__dump_trace(func, data, sp,
@@ -98,8 +99,10 @@ static int show_address(void *data, unsigned long address, int reliable)
 	return 0;
 }
 
-static void show_trace(struct task_struct *task, unsigned long sp)
+void show_stack(struct task_struct *task, unsigned long *stack)
 {
+	unsigned long sp = (unsigned long) stack;
+
 	if (!sp)
 		sp = task ? task->thread.ksp : current_stack_pointer();
 	printk("Call Trace:\n");
@@ -107,29 +110,6 @@ static void show_trace(struct task_struct *task, unsigned long sp)
 	if (!task)
 		task = current;
 	debug_show_held_locks(task);
-}
-
-void show_stack(struct task_struct *task, unsigned long *sp)
-{
-	unsigned long *stack;
-	int i;
-
-	stack = sp;
-	if (!stack) {
-		if (!task)
-			stack = (unsigned long *)current_stack_pointer();
-		else
-			stack = (unsigned long *)task->thread.ksp;
-	}
-	printk(KERN_DEFAULT "Stack:\n");
-	for (i = 0; i < 20; i++) {
-		if (((addr_t) stack & (THREAD_SIZE-1)) == 0)
-			break;
-		if (i % 4 == 0)
-			printk(KERN_DEFAULT "       ");
-		pr_cont("%016lx%c", *stack++, i % 4 == 3 ? '\n' : ' ');
-	}
-	show_trace(task, (unsigned long)sp);
 }
 
 static void show_last_breaking_event(struct pt_regs *regs)
@@ -144,13 +124,13 @@ void show_registers(struct pt_regs *regs)
 	char *mode;
 
 	mode = user_mode(regs) ? "User" : "Krnl";
-	printk("%s PSW : %p %p", mode, (void *)regs->psw.mask, (void *)regs->psw.addr);
+	printk("%s PSW : %px %px", mode, (void *)regs->psw.mask, (void *)regs->psw.addr);
 	if (!user_mode(regs))
 		pr_cont(" (%pSR)", (void *)regs->psw.addr);
 	pr_cont("\n");
 	printk("           R:%x T:%x IO:%x EX:%x Key:%x M:%x W:%x "
-	       "P:%x AS:%x CC:%x PM:%x", psw->r, psw->t, psw->i, psw->e,
-	       psw->key, psw->m, psw->w, psw->p, psw->as, psw->cc, psw->pm);
+	       "P:%x AS:%x CC:%x PM:%x", psw->per, psw->dat, psw->io, psw->ext,
+	       psw->key, psw->mcheck, psw->wait, psw->pstate, psw->as, psw->cc, psw->pm);
 	pr_cont(" RI:%x EA:%x\n", psw->ri, psw->eaba);
 	printk("%s GPRS: %016lx %016lx %016lx %016lx\n", mode,
 	       regs->gprs[0], regs->gprs[1], regs->gprs[2], regs->gprs[3]);
@@ -169,7 +149,7 @@ void show_regs(struct pt_regs *regs)
 	show_registers(regs);
 	/* Show stack backtrace if pt_regs is from kernel mode */
 	if (!user_mode(regs))
-		show_trace(NULL, regs->gprs[15]);
+		show_stack(NULL, (unsigned long *) regs->gprs[15]);
 	show_last_breaking_event(regs);
 }
 

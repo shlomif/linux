@@ -1,4 +1,11 @@
-.. -*- coding: utf-8; mode: rst -*-
+.. Permission is granted to copy, distribute and/or modify this
+.. document under the terms of the GNU Free Documentation License,
+.. Version 1.1 or any later version published by the Free Software
+.. Foundation, with no Invariant Sections, no Front-Cover Texts
+.. and no Back-Cover Texts. A copy of the license is included at
+.. Documentation/media/uapi/fdl-appendix.rst.
+..
+.. TODO: replace it to GFDL-1.1-or-later WITH no-invariant-sections
 
 .. _packed-rgb:
 
@@ -16,9 +23,12 @@ next to each other in memory.
 
 .. raw:: latex
 
-    \begin{adjustbox}{width=\columnwidth}
+    \begingroup
+    \tiny
+    \setlength{\tabcolsep}{2pt}
 
-.. tabularcolumns:: |p{4.5cm}|p{3.3cm}|p{0.7cm}|p{0.4cm}|p{0.4cm}|p{0.4cm}|p{0.4cm}|p{0.4cm}|p{0.4cm}|p{0.4cm}|p{0.4cm}|p{0.2cm}|p{0.4cm}|p{0.4cm}|p{0.4cm}|p{0.4cm}|p{0.4cm}|p{0.4cm}|p{0.4cm}|p{0.4cm}|p{0.2cm}|p{0.4cm}|p{0.4cm}|p{0.4cm}|p{0.4cm}|p{0.4cm}|p{0.4cm}|p{0.4cm}|p{0.4cm}|p{0.2cm}|p{0.4cm}|p{0.4cm}|p{0.4cm}|p{0.4cm}|p{0.4cm}|p{0.4cm}|p{0.4cm}|p{1.7cm}|
+.. tabularcolumns:: |p{2.3cm}|p{1.6cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|
+
 
 .. _rgb-formats:
 
@@ -28,17 +38,12 @@ next to each other in memory.
 
     * - Identifier
       - Code
-      -
       - :cspan:`7` Byte 0 in memory
-      -
       - :cspan:`7` Byte 1
-      -
       - :cspan:`7` Byte 2
-      -
       - :cspan:`7` Byte 3
     * -
       -
-      - Bit
       - 7
       - 6
       - 5
@@ -47,7 +52,7 @@ next to each other in memory.
       - 2
       - 1
       - 0
-      -
+
       - 7
       - 6
       - 5
@@ -56,7 +61,7 @@ next to each other in memory.
       - 2
       - 1
       - 0
-      -
+
       - 7
       - 6
       - 5
@@ -65,7 +70,7 @@ next to each other in memory.
       - 2
       - 1
       - 0
-      -
+
       - 7
       - 6
       - 5
@@ -78,7 +83,7 @@ next to each other in memory.
 
       - ``V4L2_PIX_FMT_RGB332``
       - 'RGB1'
-      -
+
       - r\ :sub:`2`
       - r\ :sub:`1`
       - r\ :sub:`0`
@@ -87,11 +92,12 @@ next to each other in memory.
       - g\ :sub:`0`
       - b\ :sub:`1`
       - b\ :sub:`0`
+      -
     * .. _V4L2-PIX-FMT-ARGB444:
 
       - ``V4L2_PIX_FMT_ARGB444``
       - 'AR12'
-      -
+
       - g\ :sub:`3`
       - g\ :sub:`2`
       - g\ :sub:`1`
@@ -100,7 +106,7 @@ next to each other in memory.
       - b\ :sub:`2`
       - b\ :sub:`1`
       - b\ :sub:`0`
-      -
+
       - a\ :sub:`3`
       - a\ :sub:`2`
       - a\ :sub:`1`
@@ -109,11 +115,12 @@ next to each other in memory.
       - r\ :sub:`2`
       - r\ :sub:`1`
       - r\ :sub:`0`
+      -
     * .. _V4L2-PIX-FMT-XRGB444:
 
       - ``V4L2_PIX_FMT_XRGB444``
       - 'XR12'
-      -
+
       - g\ :sub:`3`
       - g\ :sub:`2`
       - g\ :sub:`1`
@@ -122,7 +129,7 @@ next to each other in memory.
       - b\ :sub:`2`
       - b\ :sub:`1`
       - b\ :sub:`0`
-      -
+
       -
       -
       -
@@ -131,11 +138,12 @@ next to each other in memory.
       - r\ :sub:`2`
       - r\ :sub:`1`
       - r\ :sub:`0`
+      -
     * .. _V4L2-PIX-FMT-ARGB555:
 
       - ``V4L2_PIX_FMT_ARGB555``
       - 'AR15'
-      -
+
       - g\ :sub:`2`
       - g\ :sub:`1`
       - g\ :sub:`0`
@@ -144,7 +152,7 @@ next to each other in memory.
       - b\ :sub:`2`
       - b\ :sub:`1`
       - b\ :sub:`0`
-      -
+
       - a
       - r\ :sub:`4`
       - r\ :sub:`3`
@@ -153,11 +161,12 @@ next to each other in memory.
       - r\ :sub:`0`
       - g\ :sub:`4`
       - g\ :sub:`3`
+      -
     * .. _V4L2-PIX-FMT-XRGB555:
 
       - ``V4L2_PIX_FMT_XRGB555``
       - 'XR15'
-      -
+
       - g\ :sub:`2`
       - g\ :sub:`1`
       - g\ :sub:`0`
@@ -166,7 +175,7 @@ next to each other in memory.
       - b\ :sub:`2`
       - b\ :sub:`1`
       - b\ :sub:`0`
-      -
+
       -
       - r\ :sub:`4`
       - r\ :sub:`3`
@@ -175,11 +184,12 @@ next to each other in memory.
       - r\ :sub:`0`
       - g\ :sub:`4`
       - g\ :sub:`3`
+      -
     * .. _V4L2-PIX-FMT-RGB565:
 
       - ``V4L2_PIX_FMT_RGB565``
       - 'RGBP'
-      -
+
       - g\ :sub:`2`
       - g\ :sub:`1`
       - g\ :sub:`0`
@@ -188,7 +198,7 @@ next to each other in memory.
       - b\ :sub:`2`
       - b\ :sub:`1`
       - b\ :sub:`0`
-      -
+
       - r\ :sub:`4`
       - r\ :sub:`3`
       - r\ :sub:`2`
@@ -197,11 +207,12 @@ next to each other in memory.
       - g\ :sub:`5`
       - g\ :sub:`4`
       - g\ :sub:`3`
+      -
     * .. _V4L2-PIX-FMT-ARGB555X:
 
       - ``V4L2_PIX_FMT_ARGB555X``
       - 'AR15' | (1 << 31)
-      -
+
       - a
       - r\ :sub:`4`
       - r\ :sub:`3`
@@ -210,7 +221,7 @@ next to each other in memory.
       - r\ :sub:`0`
       - g\ :sub:`4`
       - g\ :sub:`3`
-      -
+
       - g\ :sub:`2`
       - g\ :sub:`1`
       - g\ :sub:`0`
@@ -219,11 +230,12 @@ next to each other in memory.
       - b\ :sub:`2`
       - b\ :sub:`1`
       - b\ :sub:`0`
+      -
     * .. _V4L2-PIX-FMT-XRGB555X:
 
       - ``V4L2_PIX_FMT_XRGB555X``
       - 'XR15' | (1 << 31)
-      -
+
       -
       - r\ :sub:`4`
       - r\ :sub:`3`
@@ -232,7 +244,7 @@ next to each other in memory.
       - r\ :sub:`0`
       - g\ :sub:`4`
       - g\ :sub:`3`
-      -
+
       - g\ :sub:`2`
       - g\ :sub:`1`
       - g\ :sub:`0`
@@ -241,11 +253,12 @@ next to each other in memory.
       - b\ :sub:`2`
       - b\ :sub:`1`
       - b\ :sub:`0`
+      -
     * .. _V4L2-PIX-FMT-RGB565X:
 
       - ``V4L2_PIX_FMT_RGB565X``
       - 'RGBR'
-      -
+
       - r\ :sub:`4`
       - r\ :sub:`3`
       - r\ :sub:`2`
@@ -254,7 +267,7 @@ next to each other in memory.
       - g\ :sub:`5`
       - g\ :sub:`4`
       - g\ :sub:`3`
-      -
+
       - g\ :sub:`2`
       - g\ :sub:`1`
       - g\ :sub:`0`
@@ -263,11 +276,12 @@ next to each other in memory.
       - b\ :sub:`2`
       - b\ :sub:`1`
       - b\ :sub:`0`
+      -
     * .. _V4L2-PIX-FMT-BGR24:
 
       - ``V4L2_PIX_FMT_BGR24``
       - 'BGR3'
-      -
+
       - b\ :sub:`7`
       - b\ :sub:`6`
       - b\ :sub:`5`
@@ -276,7 +290,7 @@ next to each other in memory.
       - b\ :sub:`2`
       - b\ :sub:`1`
       - b\ :sub:`0`
-      -
+
       - g\ :sub:`7`
       - g\ :sub:`6`
       - g\ :sub:`5`
@@ -285,7 +299,7 @@ next to each other in memory.
       - g\ :sub:`2`
       - g\ :sub:`1`
       - g\ :sub:`0`
-      -
+
       - r\ :sub:`7`
       - r\ :sub:`6`
       - r\ :sub:`5`
@@ -294,11 +308,12 @@ next to each other in memory.
       - r\ :sub:`2`
       - r\ :sub:`1`
       - r\ :sub:`0`
+      -
     * .. _V4L2-PIX-FMT-RGB24:
 
       - ``V4L2_PIX_FMT_RGB24``
       - 'RGB3'
-      -
+
       - r\ :sub:`7`
       - r\ :sub:`6`
       - r\ :sub:`5`
@@ -307,7 +322,7 @@ next to each other in memory.
       - r\ :sub:`2`
       - r\ :sub:`1`
       - r\ :sub:`0`
-      -
+
       - g\ :sub:`7`
       - g\ :sub:`6`
       - g\ :sub:`5`
@@ -316,7 +331,7 @@ next to each other in memory.
       - g\ :sub:`2`
       - g\ :sub:`1`
       - g\ :sub:`0`
-      -
+
       - b\ :sub:`7`
       - b\ :sub:`6`
       - b\ :sub:`5`
@@ -325,11 +340,12 @@ next to each other in memory.
       - b\ :sub:`2`
       - b\ :sub:`1`
       - b\ :sub:`0`
+      -
     * .. _V4L2-PIX-FMT-BGR666:
 
       - ``V4L2_PIX_FMT_BGR666``
       - 'BGRH'
-      -
+
       - b\ :sub:`5`
       - b\ :sub:`4`
       - b\ :sub:`3`
@@ -338,7 +354,7 @@ next to each other in memory.
       - b\ :sub:`0`
       - g\ :sub:`5`
       - g\ :sub:`4`
-      -
+
       - g\ :sub:`3`
       - g\ :sub:`2`
       - g\ :sub:`1`
@@ -347,7 +363,7 @@ next to each other in memory.
       - r\ :sub:`4`
       - r\ :sub:`3`
       - r\ :sub:`2`
-      -
+
       - r\ :sub:`1`
       - r\ :sub:`0`
       -
@@ -356,7 +372,7 @@ next to each other in memory.
       -
       -
       -
-      -
+
       -
       -
       -
@@ -369,7 +385,7 @@ next to each other in memory.
 
       - ``V4L2_PIX_FMT_ABGR32``
       - 'AR24'
-      -
+
       - b\ :sub:`7`
       - b\ :sub:`6`
       - b\ :sub:`5`
@@ -378,7 +394,7 @@ next to each other in memory.
       - b\ :sub:`2`
       - b\ :sub:`1`
       - b\ :sub:`0`
-      -
+
       - g\ :sub:`7`
       - g\ :sub:`6`
       - g\ :sub:`5`
@@ -387,7 +403,7 @@ next to each other in memory.
       - g\ :sub:`2`
       - g\ :sub:`1`
       - g\ :sub:`0`
-      -
+
       - r\ :sub:`7`
       - r\ :sub:`6`
       - r\ :sub:`5`
@@ -396,7 +412,7 @@ next to each other in memory.
       - r\ :sub:`2`
       - r\ :sub:`1`
       - r\ :sub:`0`
-      -
+
       - a\ :sub:`7`
       - a\ :sub:`6`
       - a\ :sub:`5`
@@ -409,7 +425,7 @@ next to each other in memory.
 
       - ``V4L2_PIX_FMT_XBGR32``
       - 'XR24'
-      -
+
       - b\ :sub:`7`
       - b\ :sub:`6`
       - b\ :sub:`5`
@@ -418,7 +434,7 @@ next to each other in memory.
       - b\ :sub:`2`
       - b\ :sub:`1`
       - b\ :sub:`0`
-      -
+
       - g\ :sub:`7`
       - g\ :sub:`6`
       - g\ :sub:`5`
@@ -427,7 +443,7 @@ next to each other in memory.
       - g\ :sub:`2`
       - g\ :sub:`1`
       - g\ :sub:`0`
-      -
+
       - r\ :sub:`7`
       - r\ :sub:`6`
       - r\ :sub:`5`
@@ -436,7 +452,7 @@ next to each other in memory.
       - r\ :sub:`2`
       - r\ :sub:`1`
       - r\ :sub:`0`
-      -
+
       -
       -
       -
@@ -449,7 +465,7 @@ next to each other in memory.
 
       - ``V4L2_PIX_FMT_ARGB32``
       - 'BA24'
-      -
+
       - a\ :sub:`7`
       - a\ :sub:`6`
       - a\ :sub:`5`
@@ -458,7 +474,7 @@ next to each other in memory.
       - a\ :sub:`2`
       - a\ :sub:`1`
       - a\ :sub:`0`
-      -
+
       - r\ :sub:`7`
       - r\ :sub:`6`
       - r\ :sub:`5`
@@ -467,7 +483,7 @@ next to each other in memory.
       - r\ :sub:`2`
       - r\ :sub:`1`
       - r\ :sub:`0`
-      -
+
       - g\ :sub:`7`
       - g\ :sub:`6`
       - g\ :sub:`5`
@@ -476,7 +492,7 @@ next to each other in memory.
       - g\ :sub:`2`
       - g\ :sub:`1`
       - g\ :sub:`0`
-      -
+
       - b\ :sub:`7`
       - b\ :sub:`6`
       - b\ :sub:`5`
@@ -489,6 +505,7 @@ next to each other in memory.
 
       - ``V4L2_PIX_FMT_XRGB32``
       - 'BX24'
+
       -
       -
       -
@@ -497,8 +514,7 @@ next to each other in memory.
       -
       -
       -
-      -
-      -
+
       - r\ :sub:`7`
       - r\ :sub:`6`
       - r\ :sub:`5`
@@ -507,7 +523,7 @@ next to each other in memory.
       - r\ :sub:`2`
       - r\ :sub:`1`
       - r\ :sub:`0`
-      -
+
       - g\ :sub:`7`
       - g\ :sub:`6`
       - g\ :sub:`5`
@@ -516,7 +532,7 @@ next to each other in memory.
       - g\ :sub:`2`
       - g\ :sub:`1`
       - g\ :sub:`0`
-      -
+
       - b\ :sub:`7`
       - b\ :sub:`6`
       - b\ :sub:`5`
@@ -528,7 +544,7 @@ next to each other in memory.
 
 .. raw:: latex
 
-    \end{adjustbox}\newline\newline
+    \endgroup
 
 .. note:: Bit 7 is the most significant bit.
 
@@ -562,9 +578,9 @@ Each cell is one byte.
 
 .. raw:: latex
 
-    \newline\newline\begin{adjustbox}{width=\columnwidth}
+    \small
 
-.. tabularcolumns:: |p{4.1cm}|p{1.1cm}|p{1.1cm}|p{1.1cm}|p{1.1cm}|p{1.1cm}|p{1.1cm}|p{1.1cm}|p{1.1cm}|p{1.1cm}|p{1.1cm}|p{1.1cm}|p{1.3cm}|
+.. tabularcolumns:: |p{3.1cm}|p{0.8cm}|p{0.8cm}|p{0.8cm}|p{0.8cm}|p{0.8cm}|p{0.8cm}|p{0.8cm}|p{0.8cm}|p{0.8cm}|p{0.8cm}|p{0.8cm}|p{0.8cm}|
 
 .. flat-table:: RGB byte order
     :header-rows:  0
@@ -626,19 +642,21 @@ Each cell is one byte.
 
 .. raw:: latex
 
-    \end{adjustbox}\newline\newline
+    \normalsize
 
 Formats defined in :ref:`rgb-formats-deprecated` are deprecated and
 must not be used by new drivers. They are documented here for reference.
-The meaning of their alpha bits (a) is ill-defined and interpreted as in
+The meaning of their alpha bits ``(a)`` are ill-defined and interpreted as in
 either the corresponding ARGB or XRGB format, depending on the driver.
 
 
 .. raw:: latex
 
-    \begin{adjustbox}{width=\columnwidth}
+    \begingroup
+    \tiny
+    \setlength{\tabcolsep}{2pt}
 
-.. tabularcolumns:: |p{4.2cm}|p{1.0cm}|p{0.7cm}|p{0.4cm}|p{0.4cm}|p{0.4cm}|p{0.4cm}|p{0.4cm}|p{0.4cm}|p{0.4cm}|p{0.4cm}|p{0.2cm}|p{0.4cm}|p{0.4cm}|p{0.4cm}|p{0.4cm}|p{0.4cm}|p{0.4cm}|p{0.4cm}|p{0.4cm}|p{0.2cm}|p{0.4cm}|p{0.4cm}|p{0.4cm}|p{0.4cm}|p{0.4cm}|p{0.4cm}|p{0.4cm}|p{0.4cm}|p{0.2cm}|p{0.4cm}|p{0.4cm}|p{0.4cm}|p{0.4cm}|p{0.4cm}|p{0.4cm}|p{0.4cm}|p{1.7cm}|
+.. tabularcolumns:: |p{2.2cm}|p{0.60cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|
 
 .. _rgb-formats-deprecated:
 
@@ -648,17 +666,15 @@ either the corresponding ARGB or XRGB format, depending on the driver.
 
     * - Identifier
       - Code
-      -
       - :cspan:`7` Byte 0 in memory
-      -
+
       - :cspan:`7` Byte 1
-      -
+
       - :cspan:`7` Byte 2
-      -
+
       - :cspan:`7` Byte 3
     * -
       -
-      - Bit
       - 7
       - 6
       - 5
@@ -667,7 +683,7 @@ either the corresponding ARGB or XRGB format, depending on the driver.
       - 2
       - 1
       - 0
-      -
+
       - 7
       - 6
       - 5
@@ -676,7 +692,7 @@ either the corresponding ARGB or XRGB format, depending on the driver.
       - 2
       - 1
       - 0
-      -
+
       - 7
       - 6
       - 5
@@ -685,7 +701,7 @@ either the corresponding ARGB or XRGB format, depending on the driver.
       - 2
       - 1
       - 0
-      -
+
       - 7
       - 6
       - 5
@@ -698,7 +714,7 @@ either the corresponding ARGB or XRGB format, depending on the driver.
 
       - ``V4L2_PIX_FMT_RGB444``
       - 'R444'
-      -
+
       - g\ :sub:`3`
       - g\ :sub:`2`
       - g\ :sub:`1`
@@ -707,7 +723,7 @@ either the corresponding ARGB or XRGB format, depending on the driver.
       - b\ :sub:`2`
       - b\ :sub:`1`
       - b\ :sub:`0`
-      -
+
       - a\ :sub:`3`
       - a\ :sub:`2`
       - a\ :sub:`1`
@@ -716,11 +732,12 @@ either the corresponding ARGB or XRGB format, depending on the driver.
       - r\ :sub:`2`
       - r\ :sub:`1`
       - r\ :sub:`0`
+      -
     * .. _V4L2-PIX-FMT-RGB555:
 
       - ``V4L2_PIX_FMT_RGB555``
       - 'RGBO'
-      -
+
       - g\ :sub:`2`
       - g\ :sub:`1`
       - g\ :sub:`0`
@@ -729,7 +746,7 @@ either the corresponding ARGB or XRGB format, depending on the driver.
       - b\ :sub:`2`
       - b\ :sub:`1`
       - b\ :sub:`0`
-      -
+
       - a
       - r\ :sub:`4`
       - r\ :sub:`3`
@@ -738,11 +755,12 @@ either the corresponding ARGB or XRGB format, depending on the driver.
       - r\ :sub:`0`
       - g\ :sub:`4`
       - g\ :sub:`3`
+      -
     * .. _V4L2-PIX-FMT-RGB555X:
 
       - ``V4L2_PIX_FMT_RGB555X``
       - 'RGBQ'
-      -
+
       - a
       - r\ :sub:`4`
       - r\ :sub:`3`
@@ -751,7 +769,7 @@ either the corresponding ARGB or XRGB format, depending on the driver.
       - r\ :sub:`0`
       - g\ :sub:`4`
       - g\ :sub:`3`
-      -
+
       - g\ :sub:`2`
       - g\ :sub:`1`
       - g\ :sub:`0`
@@ -760,11 +778,12 @@ either the corresponding ARGB or XRGB format, depending on the driver.
       - b\ :sub:`2`
       - b\ :sub:`1`
       - b\ :sub:`0`
+      -
     * .. _V4L2-PIX-FMT-BGR32:
 
       - ``V4L2_PIX_FMT_BGR32``
       - 'BGR4'
-      -
+
       - b\ :sub:`7`
       - b\ :sub:`6`
       - b\ :sub:`5`
@@ -773,7 +792,7 @@ either the corresponding ARGB or XRGB format, depending on the driver.
       - b\ :sub:`2`
       - b\ :sub:`1`
       - b\ :sub:`0`
-      -
+
       - g\ :sub:`7`
       - g\ :sub:`6`
       - g\ :sub:`5`
@@ -782,7 +801,7 @@ either the corresponding ARGB or XRGB format, depending on the driver.
       - g\ :sub:`2`
       - g\ :sub:`1`
       - g\ :sub:`0`
-      -
+
       - r\ :sub:`7`
       - r\ :sub:`6`
       - r\ :sub:`5`
@@ -791,7 +810,7 @@ either the corresponding ARGB or XRGB format, depending on the driver.
       - r\ :sub:`2`
       - r\ :sub:`1`
       - r\ :sub:`0`
-      -
+
       - a\ :sub:`7`
       - a\ :sub:`6`
       - a\ :sub:`5`
@@ -804,7 +823,7 @@ either the corresponding ARGB or XRGB format, depending on the driver.
 
       - ``V4L2_PIX_FMT_RGB32``
       - 'RGB4'
-      -
+
       - a\ :sub:`7`
       - a\ :sub:`6`
       - a\ :sub:`5`
@@ -813,7 +832,7 @@ either the corresponding ARGB or XRGB format, depending on the driver.
       - a\ :sub:`2`
       - a\ :sub:`1`
       - a\ :sub:`0`
-      -
+
       - r\ :sub:`7`
       - r\ :sub:`6`
       - r\ :sub:`5`
@@ -822,7 +841,7 @@ either the corresponding ARGB or XRGB format, depending on the driver.
       - r\ :sub:`2`
       - r\ :sub:`1`
       - r\ :sub:`0`
-      -
+
       - g\ :sub:`7`
       - g\ :sub:`6`
       - g\ :sub:`5`
@@ -831,7 +850,7 @@ either the corresponding ARGB or XRGB format, depending on the driver.
       - g\ :sub:`2`
       - g\ :sub:`1`
       - g\ :sub:`0`
-      -
+
       - b\ :sub:`7`
       - b\ :sub:`6`
       - b\ :sub:`5`
@@ -843,7 +862,7 @@ either the corresponding ARGB or XRGB format, depending on the driver.
 
 .. raw:: latex
 
-    \end{adjustbox}\newline\newline
+    \endgroup
 
 A test utility to determine which RGB formats a driver actually supports
 is available from the LinuxTV v4l-dvb repository. See

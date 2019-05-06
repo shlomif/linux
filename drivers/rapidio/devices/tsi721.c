@@ -51,6 +51,8 @@ module_param(mbox_sel, byte, S_IRUGO);
 MODULE_PARM_DESC(mbox_sel,
 		 "RIO Messaging MBOX Selection Mask (default: 0x0f = all)");
 
+static DEFINE_SPINLOCK(tsi721_maint_lock);
+
 static void tsi721_omsg_handler(struct tsi721_device *priv, int ch);
 static void tsi721_imsg_handler(struct tsi721_device *priv, int ch);
 
@@ -124,11 +126,14 @@ static int tsi721_maint_dma(struct tsi721_device *priv, u32 sys_size,
 	void __iomem *regs = priv->regs + TSI721_DMAC_BASE(priv->mdma.ch_id);
 	struct tsi721_dma_desc *bd_ptr;
 	u32 rd_count, swr_ptr, ch_stat;
+	unsigned long flags;
 	int i, err = 0;
 	u32 op = do_wr ? MAINT_WR : MAINT_RD;
 
 	if (offset > (RIO_MAINT_SPACE_SZ - len) || (len != sizeof(u32)))
 		return -EINVAL;
+
+	spin_lock_irqsave(&tsi721_maint_lock, flags);
 
 	bd_ptr = priv->mdma.bd_base;
 
@@ -197,7 +202,9 @@ static int tsi721_maint_dma(struct tsi721_device *priv, u32 sys_size,
 	 */
 	swr_ptr = ioread32(regs + TSI721_DMAC_DSWP);
 	iowrite32(swr_ptr, regs + TSI721_DMAC_DSRP);
+
 err_out:
+	spin_unlock_irqrestore(&tsi721_maint_lock, flags);
 
 	return err;
 }
@@ -1375,9 +1382,9 @@ static int tsi721_doorbell_init(struct tsi721_device *priv)
 	INIT_WORK(&priv->idb_work, tsi721_db_dpc);
 
 	/* Allocate buffer for inbound doorbells queue */
-	priv->idb_base = dma_zalloc_coherent(&priv->pdev->dev,
-				IDB_QSIZE * TSI721_IDB_ENTRY_SIZE,
-				&priv->idb_dma, GFP_KERNEL);
+	priv->idb_base = dma_alloc_coherent(&priv->pdev->dev,
+					    IDB_QSIZE * TSI721_IDB_ENTRY_SIZE,
+					    &priv->idb_dma, GFP_KERNEL);
 	if (!priv->idb_base)
 		return -ENOMEM;
 
@@ -1440,9 +1447,9 @@ static int tsi721_bdma_maint_init(struct tsi721_device *priv)
 	regs = priv->regs + TSI721_DMAC_BASE(TSI721_DMACH_MAINT);
 
 	/* Allocate space for DMA descriptors */
-	bd_ptr = dma_zalloc_coherent(&priv->pdev->dev,
-					bd_num * sizeof(struct tsi721_dma_desc),
-					&bd_phys, GFP_KERNEL);
+	bd_ptr = dma_alloc_coherent(&priv->pdev->dev,
+				    bd_num * sizeof(struct tsi721_dma_desc),
+				    &bd_phys, GFP_KERNEL);
 	if (!bd_ptr)
 		return -ENOMEM;
 
@@ -1457,7 +1464,7 @@ static int tsi721_bdma_maint_init(struct tsi721_device *priv)
 	sts_size = (bd_num >= TSI721_DMA_MINSTSSZ) ?
 					bd_num : TSI721_DMA_MINSTSSZ;
 	sts_size = roundup_pow_of_two(sts_size);
-	sts_ptr = dma_zalloc_coherent(&priv->pdev->dev,
+	sts_ptr = dma_alloc_coherent(&priv->pdev->dev,
 				     sts_size * sizeof(struct tsi721_dma_sts),
 				     &sts_phys, GFP_KERNEL);
 	if (!sts_ptr) {
@@ -1932,10 +1939,10 @@ static int tsi721_open_outb_mbox(struct rio_mport *mport, void *dev_id,
 
 	/* Outbound message descriptor status FIFO allocation */
 	priv->omsg_ring[mbox].sts_size = roundup_pow_of_two(entries + 1);
-	priv->omsg_ring[mbox].sts_base = dma_zalloc_coherent(&priv->pdev->dev,
-			priv->omsg_ring[mbox].sts_size *
-						sizeof(struct tsi721_dma_sts),
-			&priv->omsg_ring[mbox].sts_phys, GFP_KERNEL);
+	priv->omsg_ring[mbox].sts_base = dma_alloc_coherent(&priv->pdev->dev,
+							    priv->omsg_ring[mbox].sts_size * sizeof(struct tsi721_dma_sts),
+							    &priv->omsg_ring[mbox].sts_phys,
+							    GFP_KERNEL);
 	if (priv->omsg_ring[mbox].sts_base == NULL) {
 		tsi_debug(OMSG, &priv->pdev->dev,
 			"ENOMEM for OB_MSG_%d status FIFO", mbox);
@@ -2873,8 +2880,9 @@ static int tsi721_probe(struct pci_dev *pdev,
 				 "Invalid MRRS override value %d", pcie_mrrs);
 	}
 
-	/* Adjust PCIe completion timeout. */
-	pcie_capability_clear_and_set_word(pdev, PCI_EXP_DEVCTL2, 0xf, 0x2);
+	/* Set PCIe completion timeout to 1-10ms */
+	pcie_capability_clear_and_set_word(pdev, PCI_EXP_DEVCTL2,
+					   PCI_EXP_DEVCTL2_COMP_TIMEOUT, 0x2);
 
 	/*
 	 * FIXUP: correct offsets of MSI-X tables in the MSI-X Capability Block

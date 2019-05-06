@@ -134,6 +134,7 @@ struct smscore_buffer_t {
 
 struct smsdevice_params_t {
 	struct device	*device;
+	struct usb_device	*usb_device;
 
 	int				buffer_size;
 	int				num_buffers;
@@ -176,6 +177,7 @@ struct smscore_device_t {
 
 	void *context;
 	struct device *device;
+	struct usb_device *usb_device;
 
 	char devpath[32];
 	unsigned long device_flags;
@@ -187,6 +189,8 @@ struct smscore_device_t {
 	postload_t postload_handler;
 
 	int mode, modes_supported;
+
+	gfp_t gfp_buf_flags;
 
 	/* host <--> device messages */
 	struct completion version_ex_done, data_download_done, trigger_done;
@@ -746,7 +750,7 @@ struct sms_stats {
 	u32 num_of_corrected_mpe_tlbs;/* Number of MPE tables which were
 	corrected by MPE RS decoding */
 	/* Common params */
-	u32 ber_error_count;	/* Number of errornous SYNC bits. */
+	u32 ber_error_count;	/* Number of erroneous SYNC bits. */
 	u32 ber_bit_count;	/* Total number of SYNC bits. */
 
 	/* Interface information */
@@ -1123,6 +1127,7 @@ extern void smscore_unregister_hotplug(hotplug_t hotplug);
 
 extern int smscore_register_device(struct smsdevice_params_t *params,
 				   struct smscore_device_t **coredev,
+				   gfp_t gfp_buf_flags,
 				   void *mdev);
 extern void smscore_unregister_device(struct smscore_device_t *coredev);
 

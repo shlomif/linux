@@ -73,8 +73,8 @@ static void __init fixup_bus_range(struct device_node *bridge)
 	/* Lookup the "bus-range" property for the hose */
 	prop = of_find_property(bridge, "bus-range", &len);
 	if (prop == NULL  || prop->value == NULL || len < 2 * sizeof(int)) {
-		printk(KERN_WARNING "Can't get bus-range for %s\n",
-			       bridge->full_name);
+		printk(KERN_WARNING "Can't get bus-range for %pOF\n",
+			       bridge);
 		return;
 	}
 	bus_range = prop->value;
@@ -498,12 +498,12 @@ static int __init maple_add_bridge(struct device_node *dev)
 	const int *bus_range;
 	int primary = 1;
 
-	DBG("Adding PCI host bridge %s\n", dev->full_name);
+	DBG("Adding PCI host bridge %pOF\n", dev);
 
 	bus_range = of_get_property(dev, "bus-range", &len);
 	if (bus_range == NULL || len < 2 * sizeof(int)) {
-		printk(KERN_WARNING "Can't get bus-range for %s, assume bus 0\n",
-		dev->full_name);
+		printk(KERN_WARNING "Can't get bus-range for %pOF, assume bus 0\n",
+		dev);
 	}
 
 	hose = pcibios_alloc_controller(dev);
@@ -604,10 +604,8 @@ void __init maple_pci_init(void)
 		printk(KERN_CRIT "maple_find_bridges: can't find root of device tree\n");
 		return;
 	}
-	for (np = NULL; (np = of_get_next_child(root, np)) != NULL;) {
-		if (!np->type)
-			continue;
-		if (strcmp(np->type, "pci") && strcmp(np->type, "ht"))
+	for_each_child_of_node(root, np) {
+		if (!of_node_is_type(np, "pci") && !of_node_is_type(np, "ht"))
 			continue;
 		if ((of_device_is_compatible(np, "u4-pcie") ||
 		     of_device_is_compatible(np, "u3-agp")) &&

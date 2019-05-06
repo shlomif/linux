@@ -1341,7 +1341,7 @@ static int fb_probe(struct platform_device *device)
 {
 	struct da8xx_lcdc_platform_data *fb_pdata =
 						dev_get_platdata(&device->dev);
-	static struct resource *lcdc_regs;
+	struct resource *lcdc_regs;
 	struct lcd_ctrl_config *lcd_cfg;
 	struct fb_videomode *lcdc_info;
 	struct fb_info *da8xx_fb_info;
@@ -1446,9 +1446,9 @@ static int fb_probe(struct platform_device *device)
 		da8xx_fb_fix.line_length - 1;
 
 	/* allocate palette buffer */
-	par->v_palette_base = dma_zalloc_coherent(NULL, PALETTE_SIZE,
-						  &par->p_palette_base,
-						  GFP_KERNEL | GFP_DMA);
+	par->v_palette_base = dma_alloc_coherent(NULL, PALETTE_SIZE,
+						 &par->p_palette_base,
+						 GFP_KERNEL | GFP_DMA);
 	if (!par->v_palette_base) {
 		dev_err(&device->dev,
 			"GLCD: kmalloc for palette buffer failed\n");

@@ -43,10 +43,15 @@ static void __udf_adinicb_readpage(struct page *page)
 	struct inode *inode = page->mapping->host;
 	char *kaddr;
 	struct udf_inode_info *iinfo = UDF_I(inode);
+	loff_t isize = i_size_read(inode);
 
+	/*
+	 * We have to be careful here as truncate can change i_size under us.
+	 * So just sample it once and use the same value everywhere.
+	 */
 	kaddr = kmap_atomic(page);
-	memcpy(kaddr, iinfo->i_ext.i_data + iinfo->i_lenEAttr, inode->i_size);
-	memset(kaddr + inode->i_size, 0, PAGE_SIZE - inode->i_size);
+	memcpy(kaddr, iinfo->i_ext.i_data + iinfo->i_lenEAttr, isize);
+	memset(kaddr + isize, 0, PAGE_SIZE - isize);
 	flush_dcache_page(page);
 	SetPageUptodate(page);
 	kunmap_atomic(kaddr);
@@ -71,7 +76,8 @@ static int udf_adinicb_writepage(struct page *page,
 	BUG_ON(!PageLocked(page));
 
 	kaddr = kmap_atomic(page);
-	memcpy(iinfo->i_ext.i_data + iinfo->i_lenEAttr, kaddr, inode->i_size);
+	memcpy(iinfo->i_ext.i_data + iinfo->i_lenEAttr, kaddr,
+		i_size_read(inode));
 	SetPageUptodate(page);
 	kunmap_atomic(kaddr);
 	mark_inode_dirty(inode);
@@ -251,11 +257,21 @@ const struct file_operations udf_file_operations = {
 static int udf_setattr(struct dentry *dentry, struct iattr *attr)
 {
 	struct inode *inode = d_inode(dentry);
+	struct super_block *sb = inode->i_sb;
 	int error;
 
 	error = setattr_prepare(dentry, attr);
 	if (error)
 		return error;
+
+	if ((attr->ia_valid & ATTR_UID) &&
+	    UDF_QUERY_FLAG(sb, UDF_FLAG_UID_SET) &&
+	    !uid_eq(attr->ia_uid, UDF_SB(sb)->s_uid))
+		return -EPERM;
+	if ((attr->ia_valid & ATTR_GID) &&
+	    UDF_QUERY_FLAG(sb, UDF_FLAG_GID_SET) &&
+	    !gid_eq(attr->ia_gid, UDF_SB(sb)->s_gid))
+		return -EPERM;
 
 	if ((attr->ia_valid & ATTR_SIZE) &&
 	    attr->ia_size != i_size_read(inode)) {

@@ -678,8 +678,9 @@ static int tegra_adma_probe(struct platform_device *pdev)
 		return -ENODEV;
 	}
 
-	tdma = devm_kzalloc(&pdev->dev, sizeof(*tdma) + cdata->nr_channels *
-			    sizeof(struct tegra_adma_chan), GFP_KERNEL);
+	tdma = devm_kzalloc(&pdev->dev,
+			    struct_size(tdma, channels, cdata->nr_channels),
+			    GFP_KERNEL);
 	if (!tdma)
 		return -ENOMEM;
 
@@ -717,8 +718,8 @@ static int tegra_adma_probe(struct platform_device *pdev)
 		tdc->chan_addr = tdma->base_addr + ADMA_CH_REG_OFFSET(i);
 
 		tdc->irq = of_irq_get(pdev->dev.of_node, i);
-		if (tdc->irq < 0) {
-			ret = tdc->irq;
+		if (tdc->irq <= 0) {
+			ret = tdc->irq ?: -ENXIO;
 			goto irq_dispose;
 		}
 

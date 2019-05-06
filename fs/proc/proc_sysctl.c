@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * /proc/sys support
  */
@@ -191,7 +192,7 @@ static void init_header(struct ctl_table_header *head,
 	head->set = set;
 	head->parent = NULL;
 	head->node = node;
-	INIT_LIST_HEAD(&head->inodes);
+	INIT_HLIST_HEAD(&head->inodes);
 	if (node) {
 		struct ctl_table *entry;
 		for (entry = table; entry->procname; entry++, node++)
@@ -261,25 +262,42 @@ static void unuse_table(struct ctl_table_header *p)
 			complete(p->unregistering);
 }
 
-/* called under sysctl_lock */
 static void proc_sys_prune_dcache(struct ctl_table_header *head)
 {
-	struct inode *inode, *prev = NULL;
+	struct inode *inode;
 	struct proc_inode *ei;
+	struct hlist_node *node;
+	struct super_block *sb;
 
 	rcu_read_lock();
-	list_for_each_entry_rcu(ei, &head->inodes, sysctl_inodes) {
-		inode = igrab(&ei->vfs_inode);
-		if (inode) {
-			rcu_read_unlock();
-			iput(prev);
-			prev = inode;
-			d_prune_aliases(inode);
+	for (;;) {
+		node = hlist_first_rcu(&head->inodes);
+		if (!node)
+			break;
+		ei = hlist_entry(node, struct proc_inode, sysctl_inodes);
+		spin_lock(&sysctl_lock);
+		hlist_del_init_rcu(&ei->sysctl_inodes);
+		spin_unlock(&sysctl_lock);
+
+		inode = &ei->vfs_inode;
+		sb = inode->i_sb;
+		if (!atomic_inc_not_zero(&sb->s_active))
+			continue;
+		inode = igrab(inode);
+		rcu_read_unlock();
+		if (unlikely(!inode)) {
+			deactivate_super(sb);
 			rcu_read_lock();
+			continue;
 		}
+
+		d_prune_aliases(inode);
+		iput(inode);
+		deactivate_super(sb);
+
+		rcu_read_lock();
 	}
 	rcu_read_unlock();
-	iput(prev);
 }
 
 /* called under sysctl_lock, will reacquire if has to wait */
@@ -446,7 +464,7 @@ static struct inode *proc_sys_make_inode(struct super_block *sb,
 
 	inode = new_inode(sb);
 	if (!inode)
-		goto out;
+		return ERR_PTR(-ENOMEM);
 
 	inode->i_ino = get_next_ino();
 
@@ -456,12 +474,11 @@ static struct inode *proc_sys_make_inode(struct super_block *sb,
 	if (unlikely(head->unregistering)) {
 		spin_unlock(&sysctl_lock);
 		iput(inode);
-		inode = NULL;
-		goto out;
+		return ERR_PTR(-ENOENT);
 	}
 	ei->sysctl = head;
 	ei->sysctl_entry = table;
-	list_add_rcu(&ei->sysctl_inodes, &head->inodes);
+	hlist_add_head_rcu(&ei->sysctl_inodes, &head->inodes);
 	head->count++;
 	spin_unlock(&sysctl_lock);
 
@@ -482,14 +499,13 @@ static struct inode *proc_sys_make_inode(struct super_block *sb,
 	if (root->set_ownership)
 		root->set_ownership(head, table, &inode->i_uid, &inode->i_gid);
 
-out:
 	return inode;
 }
 
 void proc_sys_evict_inode(struct inode *inode, struct ctl_table_header *head)
 {
 	spin_lock(&sysctl_lock);
-	list_del_rcu(&PROC_I(inode)->sysctl_inodes);
+	hlist_del_init_rcu(&PROC_I(inode)->sysctl_inodes);
 	if (!--head->count)
 		kfree_rcu(head, rcu);
 	spin_unlock(&sysctl_lock);
@@ -531,14 +547,14 @@ static struct dentry *proc_sys_lookup(struct inode *dir, struct dentry *dentry,
 			goto out;
 	}
 
-	err = ERR_PTR(-ENOMEM);
 	inode = proc_sys_make_inode(dir->i_sb, h ? h : head, p);
-	if (!inode)
+	if (IS_ERR(inode)) {
+		err = ERR_CAST(inode);
 		goto out;
+	}
 
-	err = NULL;
 	d_set_d_op(dentry, &proc_sys_dentry_operations);
-	d_add(dentry, inode);
+	err = d_splice_alias(inode, dentry);
 
 out:
 	if (h)
@@ -612,17 +628,17 @@ static int proc_sys_open(struct inode *inode, struct file *filp)
 	return 0;
 }
 
-static unsigned int proc_sys_poll(struct file *filp, poll_table *wait)
+static __poll_t proc_sys_poll(struct file *filp, poll_table *wait)
 {
 	struct inode *inode = file_inode(filp);
 	struct ctl_table_header *head = grab_header(inode);
 	struct ctl_table *table = PROC_I(inode)->sysctl_entry;
-	unsigned int ret = DEFAULT_POLLMASK;
+	__poll_t ret = DEFAULT_POLLMASK;
 	unsigned long event;
 
 	/* sysctl was unregistered */
 	if (IS_ERR(head))
-		return POLLERR | POLLHUP;
+		return EPOLLERR | EPOLLHUP;
 
 	if (!table->proc_handler)
 		goto out;
@@ -635,7 +651,7 @@ static unsigned int proc_sys_poll(struct file *filp, poll_table *wait)
 
 	if (event != atomic_read(&table->poll->event)) {
 		filp->private_data = proc_sys_poll_event(table->poll);
-		ret = POLLIN | POLLRDNORM | POLLERR | POLLPRI;
+		ret = EPOLLIN | EPOLLRDNORM | EPOLLERR | EPOLLPRI;
 	}
 
 out:
@@ -666,14 +682,24 @@ static bool proc_sys_fill_cache(struct file *file,
 		if (IS_ERR(child))
 			return false;
 		if (d_in_lookup(child)) {
+			struct dentry *res;
 			inode = proc_sys_make_inode(dir->d_sb, head, table);
-			if (!inode) {
+			if (IS_ERR(inode)) {
 				d_lookup_done(child);
 				dput(child);
 				return false;
 			}
 			d_set_d_op(child, &proc_sys_dentry_operations);
-			d_add(child, inode);
+			res = d_splice_alias(inode, child);
+			d_lookup_done(child);
+			if (unlikely(res)) {
+				if (IS_ERR(res)) {
+					dput(child);
+					return false;
+				}
+				dput(child);
+				child = res;
+			}
 		}
 	}
 	inode = d_inode(child);
@@ -689,14 +715,14 @@ static bool proc_sys_link_fill_cache(struct file *file,
 				    struct ctl_table *table)
 {
 	bool ret = true;
-	head = sysctl_head_grab(head);
 
-	if (S_ISLNK(table->mode)) {
-		/* It is not an error if we can not follow the link ignore it */
-		int err = sysctl_follow_link(&head, &table);
-		if (err)
-			goto out;
-	}
+	head = sysctl_head_grab(head);
+	if (IS_ERR(head))
+		return false;
+
+	/* It is not an error if we can not follow the link ignore it */
+	if (sysctl_follow_link(&head, &table))
+		goto out;
 
 	ret = proc_sys_fill_cache(file, ctx, head, table);
 out:
@@ -1061,16 +1087,30 @@ static int sysctl_err(const char *path, struct ctl_table *table, char *fmt, ...)
 	return -EINVAL;
 }
 
+static int sysctl_check_table_array(const char *path, struct ctl_table *table)
+{
+	int err = 0;
+
+	if ((table->proc_handler == proc_douintvec) ||
+	    (table->proc_handler == proc_douintvec_minmax)) {
+		if (table->maxlen != sizeof(unsigned int))
+			err |= sysctl_err(path, table, "array not allowed");
+	}
+
+	return err;
+}
+
 static int sysctl_check_table(const char *path, struct ctl_table *table)
 {
 	int err = 0;
 	for (; table->procname; table++) {
 		if (table->child)
-			err = sysctl_err(path, table, "Not a file");
+			err |= sysctl_err(path, table, "Not a file");
 
 		if ((table->proc_handler == proc_dostring) ||
 		    (table->proc_handler == proc_dointvec) ||
 		    (table->proc_handler == proc_douintvec) ||
+		    (table->proc_handler == proc_douintvec_minmax) ||
 		    (table->proc_handler == proc_dointvec_minmax) ||
 		    (table->proc_handler == proc_dointvec_jiffies) ||
 		    (table->proc_handler == proc_dointvec_userhz_jiffies) ||
@@ -1078,15 +1118,17 @@ static int sysctl_check_table(const char *path, struct ctl_table *table)
 		    (table->proc_handler == proc_doulongvec_minmax) ||
 		    (table->proc_handler == proc_doulongvec_ms_jiffies_minmax)) {
 			if (!table->data)
-				err = sysctl_err(path, table, "No data");
+				err |= sysctl_err(path, table, "No data");
 			if (!table->maxlen)
-				err = sysctl_err(path, table, "No maxlen");
+				err |= sysctl_err(path, table, "No maxlen");
+			else
+				err |= sysctl_check_table_array(path, table);
 		}
 		if (!table->proc_handler)
-			err = sysctl_err(path, table, "No proc_handler");
+			err |= sysctl_err(path, table, "No proc_handler");
 
 		if ((table->mode & (S_IRUGO|S_IWUGO)) != table->mode)
-			err = sysctl_err(path, table, "bogus .mode 0%o",
+			err |= sysctl_err(path, table, "bogus .mode 0%o",
 				table->mode);
 	}
 	return err;
@@ -1383,7 +1425,7 @@ static int register_leaf_sysctl_tables(const char *path, char *pos,
 	/* If there are mixed files and directories we need a new table */
 	if (nr_dirs && nr_files) {
 		struct ctl_table *new;
-		files = kzalloc(sizeof(struct ctl_table) * (nr_files + 1),
+		files = kcalloc(nr_files + 1, sizeof(struct ctl_table),
 				GFP_KERNEL);
 		if (!files)
 			goto out;
@@ -1584,8 +1626,11 @@ static void drop_sysctl_table(struct ctl_table_header *header)
 	if (--header->nreg)
 		return;
 
-	put_links(header);
-	start_unregistering(header);
+	if (parent) {
+		put_links(header);
+		start_unregistering(header);
+	}
+
 	if (!--header->count)
 		kfree_rcu(header, rcu);
 

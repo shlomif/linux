@@ -45,6 +45,8 @@
 #include <asm/eisa_bus.h>
 #include <asm/eisa_eeprom.h>
 
+#include "iommu.h"
+
 #if 0
 #define EISA_DBG(msg, arg...) printk(KERN_DEBUG "eisa: " msg, ## arg)
 #else
@@ -393,7 +395,7 @@ error_release:
 	return result;
 }
 
-static const struct parisc_device_id eisa_tbl[] = {
+static const struct parisc_device_id eisa_tbl[] __initconst = {
 	{ HPHW_BA, HVERSION_REV_ANY_ID, HVERSION_ANY_ID, 0x00076 }, /* Mongoose */
 	{ HPHW_BA, HVERSION_REV_ANY_ID, HVERSION_ANY_ID, 0x00090 }, /* Wax EISA */
 	{ 0, }
@@ -401,7 +403,7 @@ static const struct parisc_device_id eisa_tbl[] = {
 
 MODULE_DEVICE_TABLE(parisc, eisa_tbl);
 
-static struct parisc_driver eisa_driver = {
+static struct parisc_driver eisa_driver __refdata = {
 	.name =		"eisa_ba",
 	.id_table =	eisa_tbl,
 	.probe =	eisa_probe,

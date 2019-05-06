@@ -34,7 +34,7 @@
 #include <linux/of_device.h>
 #include <linux/of.h>
 
-#include <linux/i2c/ads1015.h>
+#include <linux/platform_data/ads1015.h>
 
 /* ADS1015 registers */
 enum {
@@ -133,8 +133,8 @@ static int ads1015_reg_to_mv(struct i2c_client *client, unsigned int channel,
 }
 
 /* sysfs callback function */
-static ssize_t show_in(struct device *dev, struct device_attribute *da,
-	char *buf)
+static ssize_t in_show(struct device *dev, struct device_attribute *da,
+		       char *buf)
 {
 	struct sensor_device_attribute *attr = to_sensor_dev_attr(da);
 	struct i2c_client *client = to_i2c_client(dev);
@@ -149,14 +149,14 @@ static ssize_t show_in(struct device *dev, struct device_attribute *da,
 }
 
 static const struct sensor_device_attribute ads1015_in[] = {
-	SENSOR_ATTR(in0_input, S_IRUGO, show_in, NULL, 0),
-	SENSOR_ATTR(in1_input, S_IRUGO, show_in, NULL, 1),
-	SENSOR_ATTR(in2_input, S_IRUGO, show_in, NULL, 2),
-	SENSOR_ATTR(in3_input, S_IRUGO, show_in, NULL, 3),
-	SENSOR_ATTR(in4_input, S_IRUGO, show_in, NULL, 4),
-	SENSOR_ATTR(in5_input, S_IRUGO, show_in, NULL, 5),
-	SENSOR_ATTR(in6_input, S_IRUGO, show_in, NULL, 6),
-	SENSOR_ATTR(in7_input, S_IRUGO, show_in, NULL, 7),
+	SENSOR_ATTR_RO(in0_input, in, 0),
+	SENSOR_ATTR_RO(in1_input, in, 1),
+	SENSOR_ATTR_RO(in2_input, in, 2),
+	SENSOR_ATTR_RO(in3_input, in, 3),
+	SENSOR_ATTR_RO(in4_input, in, 4),
+	SENSOR_ATTR_RO(in5_input, in, 5),
+	SENSOR_ATTR_RO(in6_input, in, 6),
+	SENSOR_ATTR_RO(in7_input, in, 7),
 };
 
 /*
@@ -191,24 +191,23 @@ static int ads1015_get_channels_config_of(struct i2c_client *client)
 		unsigned int data_rate = ADS1015_DEFAULT_DATA_RATE;
 
 		if (of_property_read_u32(node, "reg", &pval)) {
-			dev_err(&client->dev, "invalid reg on %s\n",
-				node->full_name);
+			dev_err(&client->dev, "invalid reg on %pOF\n", node);
 			continue;
 		}
 
 		channel = pval;
 		if (channel >= ADS1015_CHANNELS) {
 			dev_err(&client->dev,
-				"invalid channel index %d on %s\n",
-				channel, node->full_name);
+				"invalid channel index %d on %pOF\n",
+				channel, node);
 			continue;
 		}
 
 		if (!of_property_read_u32(node, "ti,gain", &pval)) {
 			pga = pval;
 			if (pga > 6) {
-				dev_err(&client->dev, "invalid gain on %s\n",
-					node->full_name);
+				dev_err(&client->dev, "invalid gain on %pOF\n",
+					node);
 				return -EINVAL;
 			}
 		}
@@ -217,8 +216,7 @@ static int ads1015_get_channels_config_of(struct i2c_client *client)
 			data_rate = pval;
 			if (data_rate > 7) {
 				dev_err(&client->dev,
-					"invalid data_rate on %s\n",
-					node->full_name);
+					"invalid data_rate on %pOF\n", node);
 				return -EINVAL;
 			}
 		}

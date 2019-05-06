@@ -222,9 +222,10 @@ static u32 atl1c_wait_until_idle(struct atl1c_hw *hw, u32 modu_ctrl)
  * atl1c_phy_config - Timer Call-back
  * @data: pointer to netdev cast into an unsigned long
  */
-static void atl1c_phy_config(unsigned long data)
+static void atl1c_phy_config(struct timer_list *t)
 {
-	struct atl1c_adapter *adapter = (struct atl1c_adapter *) data;
+	struct atl1c_adapter *adapter = from_timer(adapter, t,
+						   phy_config_timer);
 	struct atl1c_hw *hw = &adapter->hw;
 	unsigned long flags;
 
@@ -1018,8 +1019,8 @@ static int atl1c_setup_ring_resources(struct atl1c_adapter *adapter)
 		sizeof(struct atl1c_recv_ret_status) * rx_desc_count +
 		8 * 4;
 
-	ring_header->desc = dma_zalloc_coherent(&pdev->dev, ring_header->size,
-						&ring_header->dma, GFP_KERNEL);
+	ring_header->desc = dma_alloc_coherent(&pdev->dev, ring_header->size,
+					       &ring_header->dma, GFP_KERNEL);
 	if (unlikely(!ring_header->desc)) {
 		dev_err(&pdev->dev, "could not get memory for DMA buffer\n");
 		goto err_nomem;
@@ -1685,6 +1686,7 @@ static struct sk_buff *atl1c_alloc_skb(struct atl1c_adapter *adapter)
 	skb = build_skb(page_address(page) + adapter->rx_page_offset,
 			adapter->rx_frag_size);
 	if (likely(skb)) {
+		skb_reserve(skb, NET_SKB_PAD);
 		adapter->rx_page_offset += adapter->rx_frag_size;
 		if (adapter->rx_page_offset >= PAGE_SIZE)
 			adapter->rx_page = NULL;
@@ -1831,10 +1833,10 @@ rrs_checked:
 		atl1c_clean_rrd(rrd_ring, rrs, rfd_num);
 		if (rrs->word3 & (RRS_RX_ERR_SUM | RRS_802_3_LEN_ERR)) {
 			atl1c_clean_rfd(rfd_ring, rrs, rfd_num);
-				if (netif_msg_rx_err(adapter))
-					dev_warn(&pdev->dev,
-						"wrong packet! rrs word3 is %x\n",
-						rrs->word3);
+			if (netif_msg_rx_err(adapter))
+				dev_warn(&pdev->dev,
+					 "wrong packet! rrs word3 is %x\n",
+					 rrs->word3);
 			continue;
 		}
 
@@ -2252,7 +2254,7 @@ static netdev_tx_t atl1c_xmit_frame(struct sk_buff *skb,
 
 	if (atl1c_tx_map(adapter, skb, tpd, type) < 0) {
 		netif_info(adapter, tx_done, adapter->netdev,
-			   "tx-skb droppted due to dma error\n");
+			   "tx-skb dropped due to dma error\n");
 		/* roll back tpd/buffer */
 		atl1c_tx_rollback(adapter, tpd, type);
 		dev_kfree_skb_any(skb);
@@ -2613,8 +2615,7 @@ static int atl1c_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 	adapter->mii.phy_id_mask = 0x1f;
 	adapter->mii.reg_num_mask = MDIO_CTRL_REG_MASK;
 	netif_napi_add(netdev, &adapter->napi, atl1c_clean, 64);
-	setup_timer(&adapter->phy_config_timer, atl1c_phy_config,
-			(unsigned long)adapter);
+	timer_setup(&adapter->phy_config_timer, atl1c_phy_config, 0);
 	/* setup the private structure */
 	err = atl1c_sw_init(adapter);
 	if (err) {

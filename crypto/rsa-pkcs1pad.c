@@ -12,6 +12,7 @@
 #include <crypto/algapi.h>
 #include <crypto/akcipher.h>
 #include <crypto/internal/akcipher.h>
+#include <crypto/internal/rsa.h>
 #include <linux/err.h>
 #include <linux/init.h>
 #include <linux/kernel.h>
@@ -120,9 +121,6 @@ static int pkcs1pad_set_pub_key(struct crypto_akcipher *tfm, const void *key,
 
 	/* Find out new modulus size from rsa implementation */
 	err = crypto_akcipher_maxsize(ctx->child);
-	if (err < 0)
-		return err;
-
 	if (err > PAGE_SIZE)
 		return -ENOTSUPP;
 
@@ -144,9 +142,6 @@ static int pkcs1pad_set_priv_key(struct crypto_akcipher *tfm, const void *key,
 
 	/* Find out new modulus size from rsa implementation */
 	err = crypto_akcipher_maxsize(ctx->child);
-	if (err < 0)
-		return err;
-
 	if (err > PAGE_SIZE)
 		return -ENOTSUPP;
 
@@ -154,7 +149,7 @@ static int pkcs1pad_set_priv_key(struct crypto_akcipher *tfm, const void *key,
 	return 0;
 }
 
-static int pkcs1pad_get_max_size(struct crypto_akcipher *tfm)
+static unsigned int pkcs1pad_get_max_size(struct crypto_akcipher *tfm)
 {
 	struct pkcs1pad_ctx *ctx = akcipher_tfm_ctx(tfm);
 
@@ -164,7 +159,7 @@ static int pkcs1pad_get_max_size(struct crypto_akcipher *tfm)
 	 * decrypt/verify.
 	 */
 
-	return ctx->key_size ?: -EINVAL;
+	return ctx->key_size;
 }
 
 static void pkcs1pad_sg_set_buf(struct scatterlist *sg, void *buf, size_t len,
@@ -198,7 +193,7 @@ static int pkcs1pad_encrypt_sign_complete(struct akcipher_request *req, int err)
 	if (likely(!pad_len))
 		goto out;
 
-	out_buf = kzalloc(ctx->key_size, GFP_ATOMIC);
+	out_buf = kzalloc(ctx->key_size, GFP_KERNEL);
 	err = -ENOMEM;
 	if (!out_buf)
 		goto out;
@@ -267,15 +262,6 @@ static int pkcs1pad_encrypt(struct akcipher_request *req)
 	pkcs1pad_sg_set_buf(req_ctx->in_sg, req_ctx->in_buf,
 			ctx->key_size - 1 - req->src_len, req->src);
 
-	req_ctx->out_buf = kmalloc(ctx->key_size, GFP_KERNEL);
-	if (!req_ctx->out_buf) {
-		kfree(req_ctx->in_buf);
-		return -ENOMEM;
-	}
-
-	pkcs1pad_sg_set_buf(req_ctx->out_sg, req_ctx->out_buf,
-			ctx->key_size, NULL);
-
 	akcipher_request_set_tfm(&req_ctx->child_req, ctx->child);
 	akcipher_request_set_callback(&req_ctx->child_req, req->base.flags,
 			pkcs1pad_encrypt_sign_complete_cb, req);
@@ -285,9 +271,7 @@ static int pkcs1pad_encrypt(struct akcipher_request *req)
 				   req->dst, ctx->key_size - 1, req->dst_len);
 
 	err = crypto_akcipher_encrypt(&req_ctx->child_req);
-	if (err != -EINPROGRESS &&
-			(err != -EBUSY ||
-			 !(req->base.flags & CRYPTO_TFM_REQ_MAY_BACKLOG)))
+	if (err != -EINPROGRESS && err != -EBUSY)
 		return pkcs1pad_encrypt_sign_complete(req, err);
 
 	return err;
@@ -389,9 +373,7 @@ static int pkcs1pad_decrypt(struct akcipher_request *req)
 				   ctx->key_size);
 
 	err = crypto_akcipher_decrypt(&req_ctx->child_req);
-	if (err != -EINPROGRESS &&
-			(err != -EBUSY ||
-			 !(req->base.flags & CRYPTO_TFM_REQ_MAY_BACKLOG)))
+	if (err != -EINPROGRESS && err != -EBUSY)
 		return pkcs1pad_decrypt_complete(req, err);
 
 	return err;
@@ -411,7 +393,8 @@ static int pkcs1pad_sign(struct akcipher_request *req)
 	if (!ctx->key_size)
 		return -EINVAL;
 
-	digest_size = digest_info->size;
+	if (digest_info)
+		digest_size = digest_info->size;
 
 	if (req->src_len + digest_size > ctx->key_size - 11)
 		return -EOVERFLOW;
@@ -431,8 +414,9 @@ static int pkcs1pad_sign(struct akcipher_request *req)
 	memset(req_ctx->in_buf + 1, 0xff, ps_end - 1);
 	req_ctx->in_buf[ps_end] = 0x00;
 
-	memcpy(req_ctx->in_buf + ps_end + 1, digest_info->data,
-	       digest_info->size);
+	if (digest_info)
+		memcpy(req_ctx->in_buf + ps_end + 1, digest_info->data,
+		       digest_info->size);
 
 	pkcs1pad_sg_set_buf(req_ctx->in_sg, req_ctx->in_buf,
 			ctx->key_size - 1 - req->src_len, req->src);
@@ -446,9 +430,7 @@ static int pkcs1pad_sign(struct akcipher_request *req)
 				   req->dst, ctx->key_size - 1, req->dst_len);
 
 	err = crypto_akcipher_sign(&req_ctx->child_req);
-	if (err != -EINPROGRESS &&
-			(err != -EBUSY ||
-			 !(req->base.flags & CRYPTO_TFM_REQ_MAY_BACKLOG)))
+	if (err != -EINPROGRESS && err != -EBUSY)
 		return pkcs1pad_encrypt_sign_complete(req, err);
 
 	return err;
@@ -496,10 +478,13 @@ static int pkcs1pad_verify_complete(struct akcipher_request *req, int err)
 		goto done;
 	pos++;
 
-	if (memcmp(out_buf + pos, digest_info->data, digest_info->size))
-		goto done;
+	if (digest_info) {
+		if (crypto_memneq(out_buf + pos, digest_info->data,
+				  digest_info->size))
+			goto done;
 
-	pos += digest_info->size;
+		pos += digest_info->size;
+	}
 
 	err = 0;
 
@@ -567,9 +552,7 @@ static int pkcs1pad_verify(struct akcipher_request *req)
 				   ctx->key_size);
 
 	err = crypto_akcipher_verify(&req_ctx->child_req);
-	if (err != -EINPROGRESS &&
-			(err != -EBUSY ||
-			 !(req->base.flags & CRYPTO_TFM_REQ_MAY_BACKLOG)))
+	if (err != -EINPROGRESS && err != -EBUSY)
 		return pkcs1pad_verify_complete(req, err);
 
 	return err;
@@ -631,11 +614,14 @@ static int pkcs1pad_create(struct crypto_template *tmpl, struct rtattr **tb)
 
 	hash_name = crypto_attr_alg_name(tb[2]);
 	if (IS_ERR(hash_name))
-		return PTR_ERR(hash_name);
+		hash_name = NULL;
 
-	digest_info = rsa_lookup_asn1(hash_name);
-	if (!digest_info)
-		return -EINVAL;
+	if (hash_name) {
+		digest_info = rsa_lookup_asn1(hash_name);
+		if (!digest_info)
+			return -EINVAL;
+	} else
+		digest_info = NULL;
 
 	inst = kzalloc(sizeof(*inst) + sizeof(*ctx), GFP_KERNEL);
 	if (!inst)
@@ -655,14 +641,29 @@ static int pkcs1pad_create(struct crypto_template *tmpl, struct rtattr **tb)
 
 	err = -ENAMETOOLONG;
 
-	if (snprintf(inst->alg.base.cra_name, CRYPTO_MAX_ALG_NAME,
-		     "pkcs1pad(%s,%s)", rsa_alg->base.cra_name, hash_name) >=
-	    CRYPTO_MAX_ALG_NAME ||
-	    snprintf(inst->alg.base.cra_driver_name, CRYPTO_MAX_ALG_NAME,
-		     "pkcs1pad(%s,%s)",
-		     rsa_alg->base.cra_driver_name, hash_name) >=
-	    CRYPTO_MAX_ALG_NAME)
-		goto out_drop_alg;
+	if (!hash_name) {
+		if (snprintf(inst->alg.base.cra_name,
+			     CRYPTO_MAX_ALG_NAME, "pkcs1pad(%s)",
+			     rsa_alg->base.cra_name) >= CRYPTO_MAX_ALG_NAME)
+			goto out_drop_alg;
+
+		if (snprintf(inst->alg.base.cra_driver_name,
+			     CRYPTO_MAX_ALG_NAME, "pkcs1pad(%s)",
+			     rsa_alg->base.cra_driver_name) >=
+			     CRYPTO_MAX_ALG_NAME)
+			goto out_drop_alg;
+	} else {
+		if (snprintf(inst->alg.base.cra_name, CRYPTO_MAX_ALG_NAME,
+			     "pkcs1pad(%s,%s)", rsa_alg->base.cra_name,
+			     hash_name) >= CRYPTO_MAX_ALG_NAME)
+			goto out_drop_alg;
+
+		if (snprintf(inst->alg.base.cra_driver_name,
+			     CRYPTO_MAX_ALG_NAME, "pkcs1pad(%s,%s)",
+			     rsa_alg->base.cra_driver_name,
+			     hash_name) >= CRYPTO_MAX_ALG_NAME)
+			goto out_drop_alg;
+	}
 
 	inst->alg.base.cra_flags = rsa_alg->base.cra_flags & CRYPTO_ALG_ASYNC;
 	inst->alg.base.cra_priority = rsa_alg->base.cra_priority;

@@ -2337,7 +2337,7 @@ static int kvm_vz_check_requests(struct kvm_vcpu *vcpu, int cpu)
 	int ret = 0;
 	int i;
 
-	if (!vcpu->requests)
+	if (!kvm_request_pending(vcpu))
 		return 0;
 
 	if (kvm_check_request(KVM_REQ_TLB_FLUSH, vcpu)) {
@@ -2454,10 +2454,10 @@ static void kvm_vz_vcpu_load_tlb(struct kvm_vcpu *vcpu, int cpu)
 		 * Root ASID dealiases guest GPA mappings in the root TLB.
 		 * Allocate new root ASID if needed.
 		 */
-		if (cpumask_test_and_clear_cpu(cpu, &kvm->arch.asid_flush_mask)
-		    || (cpu_context(cpu, gpa_mm) ^ asid_cache(cpu)) &
-						asid_version_mask(cpu))
-			get_new_mmu_context(gpa_mm, cpu);
+		if (cpumask_test_and_clear_cpu(cpu, &kvm->arch.asid_flush_mask))
+			get_new_mmu_context(gpa_mm);
+		else
+			check_mmu_context(gpa_mm);
 	}
 }
 

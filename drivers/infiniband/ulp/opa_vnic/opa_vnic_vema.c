@@ -52,7 +52,9 @@
 
 #include <linux/module.h>
 #include <rdma/ib_addr.h>
-#include <rdma/ib_smi.h>
+#include <rdma/ib_verbs.h>
+#include <rdma/opa_smi.h>
+#include <rdma/opa_port_info.h>
 
 #include "opa_vnic_internal.h"
 
@@ -184,6 +186,7 @@ static inline void vema_get_pod_values(struct opa_veswport_info *port_info)
 		cpu_to_be16(OPA_VNIC_MAX_SMAC_LIMIT);
 	port_info->vport.oper_state = OPA_VNIC_STATE_DROP_ALL;
 	port_info->vport.config_state = OPA_VNIC_STATE_DROP_ALL;
+	port_info->vesw.eth_mtu = cpu_to_be16(ETH_DATA_LEN);
 }
 
 /**
@@ -603,7 +606,7 @@ static void vema_set(struct opa_vnic_vema_port *port,
 static void vema_send(struct ib_mad_agent *mad_agent,
 		      struct ib_mad_send_wc *mad_wc)
 {
-	rdma_destroy_ah(mad_wc->send_buf->ah);
+	rdma_destroy_ah(mad_wc->send_buf->ah, RDMA_DESTROY_AH_SLEEPABLE);
 	ib_free_send_mad(mad_wc->send_buf);
 }
 
@@ -677,7 +680,7 @@ static void vema_recv(struct ib_mad_agent *mad_agent,
 	ib_free_send_mad(rsp);
 
 err_rsp:
-	rdma_destroy_ah(ah);
+	rdma_destroy_ah(ah, RDMA_DESTROY_AH_SLEEPABLE);
 free_recv_mad:
 	ib_free_recv_mad(mad_wc);
 }
@@ -707,7 +710,7 @@ vema_get_port(struct opa_vnic_ctrl_port *cport, u8 port_num)
 
 /**
  * opa_vnic_vema_send_trap -- This function sends a trap to the EM
- * @cport: pointer to vnic control port
+ * @adapter: pointer to vnic adapter
  * @data: pointer to trap data filled by calling function
  * @lid:  issuers lid (encap_slid from vesw_port_info)
  *
@@ -774,7 +777,7 @@ void opa_vnic_vema_send_trap(struct opa_vnic_adapter *adapter,
 	}
 
 	rdma_ah_set_dlid(&ah_attr, trap_lid);
-	ah = rdma_create_ah(port->mad_agent->qp->pd, &ah_attr);
+	ah = rdma_create_ah(port->mad_agent->qp->pd, &ah_attr, 0);
 	if (IS_ERR(ah)) {
 		c_err("%s:Couldn't create new AH = %p\n", __func__, ah);
 		c_err("%s:dlid = %d, sl = %d, port = %d\n", __func__,
@@ -794,7 +797,7 @@ void opa_vnic_vema_send_trap(struct opa_vnic_adapter *adapter,
 
 	send_buf = ib_create_send_mad(port->mad_agent, 1, pkey_idx, 0,
 				      IB_MGMT_VENDOR_HDR, IB_MGMT_MAD_DATA,
-				      GFP_KERNEL, OPA_MGMT_BASE_VERSION);
+				      GFP_ATOMIC, OPA_MGMT_BASE_VERSION);
 	if (IS_ERR(send_buf)) {
 		c_err("%s:Couldn't allocate send buf\n", __func__);
 		goto err_sndbuf;
@@ -845,7 +848,7 @@ void opa_vnic_vema_send_trap(struct opa_vnic_adapter *adapter,
 	}
 
 err_sndbuf:
-	rdma_destroy_ah(ah);
+	rdma_destroy_ah(ah, 0);
 err_exit:
 	v_err("Aborting trap\n");
 }
@@ -885,7 +888,8 @@ static void opa_vnic_event(struct ib_event_handler *handler,
 		return;
 
 	c_dbg("OPA_VNIC received event %d on device %s port %d\n",
-	      record->event, record->device->name, record->element.port_num);
+	      record->event, dev_name(&record->device->dev),
+	      record->element.port_num);
 
 	if (record->event == IB_EVENT_PORT_ERR)
 		idr_for_each(&port->vport_idr, vema_disable_vport, NULL);
@@ -952,12 +956,7 @@ static int vema_register(struct opa_vnic_ctrl_port *cport)
 
 		INIT_IB_EVENT_HANDLER(&port->event_handler,
 				      cport->ibdev, opa_vnic_event);
-		ret = ib_register_event_handler(&port->event_handler);
-		if (ret) {
-			c_err("port %d: event handler register failed\n", i);
-			vema_unregister(cport);
-			return ret;
-		}
+		ib_register_event_handler(&port->event_handler);
 
 		idr_init(&port->vport_idr);
 		mutex_init(&port->lock);
@@ -977,6 +976,27 @@ static int vema_register(struct opa_vnic_ctrl_port *cport)
 	}
 
 	return 0;
+}
+
+/**
+ * opa_vnic_ctrl_config_dev -- This function sends a trap to the EM
+ * by way of ib_modify_port to indicate support for ethernet on the
+ * fabric.
+ * @cport: pointer to control port
+ * @en: enable or disable ethernet on fabric support
+ */
+static void opa_vnic_ctrl_config_dev(struct opa_vnic_ctrl_port *cport, bool en)
+{
+	struct ib_port_modify pm = { 0 };
+	int i;
+
+	if (en)
+		pm.set_port_cap_mask = OPA_CAP_MASK3_IsEthOnFabricSupported;
+	else
+		pm.clr_port_cap_mask = OPA_CAP_MASK3_IsEthOnFabricSupported;
+
+	for (i = 1; i <= cport->num_ports; i++)
+		ib_modify_port(cport->ibdev, i, IB_PORT_OPA_MASK_CHG, &pm);
 }
 
 /**
@@ -1007,6 +1027,7 @@ static void opa_vnic_vema_add_one(struct ib_device *device)
 		c_info("VNIC client initialized\n");
 
 	ib_set_client_data(device, &opa_vnic_client, cport);
+	opa_vnic_ctrl_config_dev(cport, true);
 }
 
 /**
@@ -1025,6 +1046,7 @@ static void opa_vnic_vema_rem_one(struct ib_device *device,
 		return;
 
 	c_info("removing VNIC client\n");
+	opa_vnic_ctrl_config_dev(cport, false);
 	vema_unregister(cport);
 	kfree(cport);
 }
@@ -1053,4 +1075,3 @@ module_exit(opa_vnic_deinit);
 MODULE_LICENSE("Dual BSD/GPL");
 MODULE_AUTHOR("Intel Corporation");
 MODULE_DESCRIPTION("Intel OPA Virtual Network driver");
-MODULE_VERSION(DRV_VERSION);

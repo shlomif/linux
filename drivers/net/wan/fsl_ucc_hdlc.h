@@ -78,6 +78,7 @@ struct ucc_hdlc_private {
 	u16 tsa;
 	bool hdlc_busy;
 	bool loopback;
+	bool hdlc_bus;
 
 	u8 *tx_buffer;
 	u8 *rx_buffer;
@@ -105,6 +106,7 @@ struct ucc_hdlc_private {
 
 	unsigned short encoding;
 	unsigned short parity;
+	unsigned short hmask;
 	u32 clocking;
 	spinlock_t lock;	/* lock for Tx BD and Tx buffer */
 #ifdef CONFIG_PM

@@ -1048,10 +1048,10 @@ static int smsc911x_mii_probe(struct net_device *dev)
 
 	phy_attached_info(phydev);
 
+	phy_set_max_speed(phydev, SPEED_100);
+
 	/* mask with MAC supported features */
-	phydev->supported &= (PHY_BASIC_FEATURES | SUPPORTED_Pause |
-			      SUPPORTED_Asym_Pause);
-	phydev->advertising = phydev->supported;
+	phy_support_asym_pause(phydev);
 
 	pdata->last_duplex = -1;
 	pdata->last_carrier = -1;
@@ -1786,7 +1786,8 @@ static int smsc911x_stop(struct net_device *dev)
 }
 
 /* Entry point for transmitting a packet */
-static int smsc911x_hard_start_xmit(struct sk_buff *skb, struct net_device *dev)
+static netdev_tx_t
+smsc911x_hard_start_xmit(struct sk_buff *skb, struct net_device *dev)
 {
 	struct smsc911x_data *pdata = netdev_priv(dev);
 	unsigned int freespace;
@@ -2335,14 +2336,14 @@ static int smsc911x_drv_remove(struct platform_device *pdev)
 	pdata = netdev_priv(dev);
 	BUG_ON(!pdata);
 	BUG_ON(!pdata->ioaddr);
-	WARN_ON(dev->phydev);
 
 	SMSC_TRACE(pdata, ifdown, "Stopping driver");
+
+	unregister_netdev(dev);
 
 	mdiobus_unregister(pdata->mii_bus);
 	mdiobus_free(pdata->mii_bus);
 
-	unregister_netdev(dev);
 	res = platform_get_resource_byname(pdev, IORESOURCE_MEM,
 					   "smsc911x-memory");
 	if (!res)
@@ -2467,6 +2468,10 @@ static int smsc911x_drv_probe(struct platform_device *pdev)
 	pdata = netdev_priv(dev);
 	dev->irq = irq;
 	pdata->ioaddr = ioremap_nocache(res->start, res_size);
+	if (!pdata->ioaddr) {
+		retval = -ENOMEM;
+		goto out_ioremap_fail;
+	}
 
 	pdata->dev = dev;
 	pdata->msg_enable = ((1 << debug) - 1);
@@ -2572,6 +2577,7 @@ out_enable_resources_fail:
 	smsc911x_free_resources(pdev);
 out_request_resources_fail:
 	iounmap(pdata->ioaddr);
+out_ioremap_fail:
 	free_netdev(dev);
 out_release_io_1:
 	release_mem_region(res->start, resource_size(res));
@@ -2589,6 +2595,11 @@ static int smsc911x_suspend(struct device *dev)
 {
 	struct net_device *ndev = dev_get_drvdata(dev);
 	struct smsc911x_data *pdata = netdev_priv(ndev);
+
+	if (netif_running(ndev)) {
+		netif_stop_queue(ndev);
+		netif_device_detach(ndev);
+	}
 
 	/* enable wake on LAN, energy detection and the external PME
 	 * signal. */
@@ -2623,7 +2634,15 @@ static int smsc911x_resume(struct device *dev)
 	while (!(smsc911x_reg_read(pdata, PMT_CTRL) & PMT_CTRL_READY_) && --to)
 		udelay(1000);
 
-	return (to == 0) ? -EIO : 0;
+	if (to == 0)
+		return -EIO;
+
+	if (netif_running(ndev)) {
+		netif_device_attach(ndev);
+		netif_start_queue(ndev);
+	}
+
+	return 0;
 }
 
 static const struct dev_pm_ops smsc911x_pm_ops = {

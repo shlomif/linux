@@ -30,10 +30,9 @@
 
 #include <linux/debugfs.h>
 
-#include "drmP.h"
+#include <drm/drmP.h>
 #include "qxl_drv.h"
 #include "qxl_object.h"
-
 
 #if defined(CONFIG_DEBUG_FS)
 static int
@@ -102,9 +101,9 @@ qxl_debugfs_init(struct drm_minor *minor)
 
 int qxl_debugfs_add_files(struct qxl_device *qdev,
 			  struct drm_info_list *files,
-			  unsigned nfiles)
+			  unsigned int nfiles)
 {
-	unsigned i;
+	unsigned int i;
 
 	for (i = 0; i < qdev->debugfs_count; i++) {
 		if (qdev->debugfs[i].files == files) {

@@ -807,7 +807,8 @@ static int greth_rx(struct net_device *dev, int limit)
 				if (netif_msg_pktdata(greth))
 					greth_print_rx_packet(phys_to_virt(dma_addr), pkt_len);
 
-				memcpy(skb_put(skb, pkt_len), phys_to_virt(dma_addr), pkt_len);
+				skb_put_data(skb, phys_to_virt(dma_addr),
+					     pkt_len);
 
 				skb->protocol = eth_type_trans(skb, dev);
 				dev->stats.rx_bytes += pkt_len;
@@ -1278,11 +1279,11 @@ static int greth_mdio_probe(struct net_device *dev)
 	}
 
 	if (greth->gbit_mac)
-		phy->supported &= PHY_GBIT_FEATURES;
+		phy_set_max_speed(phy, SPEED_1000);
 	else
-		phy->supported &= PHY_BASIC_FEATURES;
+		phy_set_max_speed(phy, SPEED_100);
 
-	phy->advertising = phy->supported;
+	linkmode_copy(phy->advertising, phy->supported);
 
 	greth->link = 0;
 	greth->speed = 0;
@@ -1432,18 +1433,18 @@ static int greth_of_probe(struct platform_device *ofdev)
 	}
 
 	/* Allocate TX descriptor ring in coherent memory */
-	greth->tx_bd_base = dma_zalloc_coherent(greth->dev, 1024,
-						&greth->tx_bd_base_phys,
-						GFP_KERNEL);
+	greth->tx_bd_base = dma_alloc_coherent(greth->dev, 1024,
+					       &greth->tx_bd_base_phys,
+					       GFP_KERNEL);
 	if (!greth->tx_bd_base) {
 		err = -ENOMEM;
 		goto error3;
 	}
 
 	/* Allocate RX descriptor ring in coherent memory */
-	greth->rx_bd_base = dma_zalloc_coherent(greth->dev, 1024,
-						&greth->rx_bd_base_phys,
-						GFP_KERNEL);
+	greth->rx_bd_base = dma_alloc_coherent(greth->dev, 1024,
+					       &greth->rx_bd_base_phys,
+					       GFP_KERNEL);
 	if (!greth->rx_bd_base) {
 		err = -ENOMEM;
 		goto error4;

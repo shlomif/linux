@@ -670,6 +670,11 @@ static unsigned long hdmi_8996_pll_recalc_rate(struct clk_hw *hw,
 
 static void hdmi_8996_pll_unprepare(struct clk_hw *hw)
 {
+	struct hdmi_pll_8996 *pll = hw_clk_to_pll(hw);
+	struct hdmi_phy *phy = pll_get_phy(pll);
+
+	hdmi_phy_write(phy, REG_HDMI_8996_PHY_CFG, 0x6);
+	usleep_range(100, 150);
 }
 
 static int hdmi_8996_pll_is_enabled(struct clk_hw *hw)
@@ -720,7 +725,7 @@ int msm_hdmi_pll_8996_init(struct platform_device *pdev)
 
 	pll->mmio_qserdes_com = msm_ioremap(pdev, "hdmi_pll", "HDMI_PLL");
 	if (IS_ERR(pll->mmio_qserdes_com)) {
-		dev_err(dev, "failed to map pll base\n");
+		DRM_DEV_ERROR(dev, "failed to map pll base\n");
 		return -ENOMEM;
 	}
 
@@ -732,7 +737,7 @@ int msm_hdmi_pll_8996_init(struct platform_device *pdev)
 
 		pll->mmio_qserdes_tx[i] = msm_ioremap(pdev, name, label);
 		if (IS_ERR(pll->mmio_qserdes_tx[i])) {
-			dev_err(dev, "failed to map pll base\n");
+			DRM_DEV_ERROR(dev, "failed to map pll base\n");
 			return -ENOMEM;
 		}
 	}
@@ -740,7 +745,7 @@ int msm_hdmi_pll_8996_init(struct platform_device *pdev)
 
 	clk = devm_clk_register(dev, &pll->clk_hw);
 	if (IS_ERR(clk)) {
-		dev_err(dev, "failed to register pll clock\n");
+		DRM_DEV_ERROR(dev, "failed to register pll clock\n");
 		return -EINVAL;
 	}
 
@@ -753,9 +758,7 @@ static const char * const hdmi_phy_8996_reg_names[] = {
 };
 
 static const char * const hdmi_phy_8996_clk_names[] = {
-	"mmagic_iface_clk",
-	"iface_clk",
-	"ref_clk",
+	"iface", "ref",
 };
 
 const struct hdmi_phy_cfg msm_hdmi_phy_8996_cfg = {

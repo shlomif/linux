@@ -19,12 +19,11 @@
 #include <linux/component.h>
 #include <linux/device.h>
 #include <linux/io.h>
+#include <linux/io-pgtable.h>
 #include <linux/iommu.h>
 #include <linux/list.h>
 #include <linux/spinlock.h>
 #include <soc/mediatek/smi.h>
-
-#include "io-pgtable.h"
 
 struct mtk_iommu_suspend_reg {
 	u32				standard_axi_mode;
@@ -32,6 +31,13 @@ struct mtk_iommu_suspend_reg {
 	u32				ctrl_reg;
 	u32				int_control0;
 	u32				int_main_control;
+	u32				ivrp_paddr;
+};
+
+enum mtk_iommu_plat {
+	M4U_MT2701,
+	M4U_MT2712,
+	M4U_MT8173,
 };
 
 struct mtk_iommu_domain;
@@ -47,8 +53,12 @@ struct mtk_iommu_data {
 	struct iommu_group		*m4u_group;
 	struct mtk_smi_iommu		smi_imu;      /* SMI larb iommu info */
 	bool                            enable_4GB;
+	bool				tlb_flush_active;
 
 	struct iommu_device		iommu;
+	enum mtk_iommu_plat		m4u_plat;
+
+	struct list_head		list;
 };
 
 static inline int compare_of(struct device *dev, void *data)

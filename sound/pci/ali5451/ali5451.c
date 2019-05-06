@@ -1484,12 +1484,9 @@ static struct snd_pcm_hardware snd_ali_capture =
 static void snd_ali_pcm_free_substream(struct snd_pcm_runtime *runtime)
 {
 	struct snd_ali_voice *pvoice = runtime->private_data;
-	struct snd_ali *codec;
 
-	if (pvoice) {
-		codec = pvoice->codec;
+	if (pvoice)
 		snd_ali_free_voice(pvoice->codec, pvoice);
-	}
 }
 
 static int snd_ali_open(struct snd_pcm_substream *substream, int rec,
@@ -1540,7 +1537,7 @@ static int snd_ali_close(struct snd_pcm_substream *substream)
 	return 0;
 }
 
-static struct snd_pcm_ops snd_ali_playback_ops = {
+static const struct snd_pcm_ops snd_ali_playback_ops = {
 	.open =		snd_ali_playback_open,
 	.close =	snd_ali_playback_close,
 	.ioctl =	snd_pcm_lib_ioctl,
@@ -1551,7 +1548,7 @@ static struct snd_pcm_ops snd_ali_playback_ops = {
 	.pointer =	snd_ali_playback_pointer,
 };
 
-static struct snd_pcm_ops snd_ali_capture_ops = {
+static const struct snd_pcm_ops snd_ali_capture_ops = {
 	.open =		snd_ali_capture_open,
 	.close =	snd_ali_close,
 	.ioctl =	snd_pcm_lib_ioctl,
@@ -1602,8 +1599,8 @@ static struct snd_pcm_hardware snd_ali_modem =
 static int snd_ali_modem_open(struct snd_pcm_substream *substream, int rec,
 			      int channel)
 {
-	static unsigned int rates[] = {8000, 9600, 12000, 16000};
-	static struct snd_pcm_hw_constraint_list hw_constraint_rates = {
+	static const unsigned int rates[] = {8000, 9600, 12000, 16000};
+	static const struct snd_pcm_hw_constraint_list hw_constraint_rates = {
 		.count = ARRAY_SIZE(rates),
 		.list = rates,
 		.mask = 0,
@@ -1626,7 +1623,7 @@ static int snd_ali_modem_capture_open(struct snd_pcm_substream *substream)
 	return snd_ali_modem_open(substream, 1, ALI_MODEM_IN_CHANNEL);
 }
 
-static struct snd_pcm_ops snd_ali_modem_playback_ops = {
+static const struct snd_pcm_ops snd_ali_modem_playback_ops = {
 	.open =		snd_ali_modem_playback_open,
 	.close =	snd_ali_close,
 	.ioctl =	snd_pcm_lib_ioctl,
@@ -1637,7 +1634,7 @@ static struct snd_pcm_ops snd_ali_modem_playback_ops = {
 	.pointer =	snd_ali_pointer,
 };
 
-static struct snd_pcm_ops snd_ali_modem_capture_ops = {
+static const struct snd_pcm_ops snd_ali_modem_capture_ops = {
 	.open =		snd_ali_modem_capture_open,
 	.close =	snd_ali_close,
 	.ioctl =	snd_pcm_lib_ioctl,
@@ -1653,8 +1650,8 @@ struct ali_pcm_description {
 	char *name;
 	unsigned int playback_num;
 	unsigned int capture_num;
-	struct snd_pcm_ops *playback_ops;
-	struct snd_pcm_ops *capture_ops;
+	const struct snd_pcm_ops *playback_ops;
+	const struct snd_pcm_ops *capture_ops;
 	unsigned short class;
 };
 
@@ -1885,10 +1882,8 @@ static int ali_suspend(struct device *dev)
 		return 0;
 
 	snd_power_change_state(card, SNDRV_CTL_POWER_D3hot);
-	for (i = 0; i < chip->num_of_codecs; i++) {
-		snd_pcm_suspend_all(chip->pcm[i]);
+	for (i = 0; i < chip->num_of_codecs; i++)
 		snd_ac97_suspend(chip->ac97[i]);
-	}
 
 	spin_lock_irq(&chip->reg_lock);
 	
@@ -2054,9 +2049,7 @@ static void snd_ali_proc_read(struct snd_info_entry *entry,
 
 static void snd_ali_proc_init(struct snd_ali *codec)
 {
-	struct snd_info_entry *entry;
-	if (!snd_card_proc_new(codec->card, "ali5451", &entry))
-		snd_info_set_text_ops(entry, codec, snd_ali_proc_read);
+	snd_card_ro_proc_new(codec->card, "ali5451", codec, snd_ali_proc_read);
 }
 
 static int snd_ali_resources(struct snd_ali *codec)

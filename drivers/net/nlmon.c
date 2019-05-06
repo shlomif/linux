@@ -6,12 +6,6 @@
 #include <linux/if_arp.h>
 #include <net/rtnetlink.h>
 
-struct pcpu_lstats {
-	u64 packets;
-	u64 bytes;
-	struct u64_stats_sync syncp;
-};
-
 static netdev_tx_t nlmon_xmit(struct sk_buff *skb, struct net_device *dev)
 {
 	int len = skb->len;
@@ -127,7 +121,8 @@ static void nlmon_setup(struct net_device *dev)
 	dev->min_mtu = sizeof(struct nlmsghdr);
 }
 
-static int nlmon_validate(struct nlattr *tb[], struct nlattr *data[])
+static int nlmon_validate(struct nlattr *tb[], struct nlattr *data[],
+			  struct netlink_ext_ack *extack)
 {
 	if (tb[IFLA_ADDRESS])
 		return -EINVAL;

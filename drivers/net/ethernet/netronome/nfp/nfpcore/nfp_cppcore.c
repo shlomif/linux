@@ -1,35 +1,5 @@
-/*
- * Copyright (C) 2015-2017 Netronome Systems, Inc.
- *
- * This software is dual licensed under the GNU General License Version 2,
- * June 1991 as shown in the file COPYING in the top-level directory of this
- * source tree or the BSD 2-Clause License provided below.  You have the
- * option to license this software under the complete terms of either license.
- *
- * The BSD 2-Clause License:
- *
- *     Redistribution and use in source and binary forms, with or
- *     without modification, are permitted provided that the following
- *     conditions are met:
- *
- *      1. Redistributions of source code must retain the above
- *         copyright notice, this list of conditions and the following
- *         disclaimer.
- *
- *      2. Redistributions in binary form must reproduce the above
- *         copyright notice, this list of conditions and the following
- *         disclaimer in the documentation and/or other materials
- *         provided with the distribution.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
- * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
- * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
- * NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS
- * BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN
- * ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
- * SOFTWARE.
- */
+// SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+/* Copyright (C) 2015-2018 Netronome Systems, Inc. */
 
 /*
  * nfp_cppcore.c
@@ -75,10 +45,7 @@ struct nfp_cpp_resource {
  * @interface:		chip interface id we are using to reach it
  * @serial:		chip serial number
  * @imb_cat_table:	CPP Mapping Table
- *
- * Following fields can be used only in probe() or with rtnl held:
- * @hwinfo:		HWInfo database fetched from the device
- * @rtsym:		firmware run time symbols
+ * @mu_locality_lsb:	MU access type bit offset
  *
  * Following fields use explicit locking:
  * @resource_list:	NFP CPP resource list
@@ -104,12 +71,10 @@ struct nfp_cpp {
 	wait_queue_head_t waitq;
 
 	u32 imb_cat_table[16];
+	unsigned int mu_locality_lsb;
 
 	struct mutex area_cache_mutex;
 	struct list_head area_cache_list;
-
-	void *hwinfo;
-	void *rtsym;
 };
 
 /* Element of the area_cache_list */
@@ -233,9 +198,6 @@ void nfp_cpp_free(struct nfp_cpp *cpp)
 	if (cpp->op->free)
 		cpp->op->free(cpp);
 
-	kfree(cpp->hwinfo);
-	kfree(cpp->rtsym);
-
 	device_unregister(&cpp->dev);
 
 	kfree(cpp);
@@ -276,37 +238,32 @@ int nfp_cpp_serial(struct nfp_cpp *cpp, const u8 **serial)
 	return sizeof(cpp->serial);
 }
 
-void *nfp_hwinfo_cache(struct nfp_cpp *cpp)
+#define NFP_IMB_TGTADDRESSMODECFG_MODE_of(_x)		(((_x) >> 13) & 0x7)
+#define NFP_IMB_TGTADDRESSMODECFG_ADDRMODE		BIT(12)
+#define   NFP_IMB_TGTADDRESSMODECFG_ADDRMODE_32_BIT	0
+#define   NFP_IMB_TGTADDRESSMODECFG_ADDRMODE_40_BIT	BIT(12)
+
+static int nfp_cpp_set_mu_locality_lsb(struct nfp_cpp *cpp)
 {
-	return cpp->hwinfo;
+	unsigned int mode, addr40;
+	u32 imbcppat;
+	int res;
+
+	imbcppat = cpp->imb_cat_table[NFP_CPP_TARGET_MU];
+	mode = NFP_IMB_TGTADDRESSMODECFG_MODE_of(imbcppat);
+	addr40 = !!(imbcppat & NFP_IMB_TGTADDRESSMODECFG_ADDRMODE);
+
+	res = nfp_cppat_mu_locality_lsb(mode, addr40);
+	if (res < 0)
+		return res;
+	cpp->mu_locality_lsb = res;
+
+	return 0;
 }
 
-void nfp_hwinfo_cache_set(struct nfp_cpp *cpp, void *val)
+unsigned int nfp_cpp_mu_locality_lsb(struct nfp_cpp *cpp)
 {
-	cpp->hwinfo = val;
-}
-
-void *nfp_rtsym_cache(struct nfp_cpp *cpp)
-{
-	return cpp->rtsym;
-}
-
-void nfp_rtsym_cache_set(struct nfp_cpp *cpp, void *val)
-{
-	cpp->rtsym = val;
-}
-
-/**
- * nfp_nffw_cache_flush() - Flush cached firmware information
- * @cpp:	NFP CPP handle
- *
- * Flush cached firmware information.  This function should be called
- * every time firmware is loaded on unloaded.
- */
-void nfp_nffw_cache_flush(struct nfp_cpp *cpp)
-{
-	kfree(nfp_rtsym_cache(cpp));
-	nfp_rtsym_cache_set(cpp, NULL);
+	return cpp->mu_locality_lsb;
 }
 
 /**
@@ -401,6 +358,40 @@ nfp_cpp_area_alloc(struct nfp_cpp *cpp, u32 dest,
 		   unsigned long long address, unsigned long size)
 {
 	return nfp_cpp_area_alloc_with_name(cpp, dest, NULL, address, size);
+}
+
+/**
+ * nfp_cpp_area_alloc_acquire() - allocate a new CPP area and lock it down
+ * @cpp:	CPP handle
+ * @name:	Name of region
+ * @dest:	CPP id
+ * @address:	Start address on CPP target
+ * @size:	Size of area
+ *
+ * Allocate and initialize a CPP area structure, and lock it down so
+ * that it can be accessed directly.
+ *
+ * NOTE: @address and @size must be 32-bit aligned values.
+ * The area must also be 'released' when the structure is freed.
+ *
+ * Return: NFP CPP Area handle, or NULL
+ */
+struct nfp_cpp_area *
+nfp_cpp_area_alloc_acquire(struct nfp_cpp *cpp, const char *name, u32 dest,
+			   unsigned long long address, unsigned long size)
+{
+	struct nfp_cpp_area *area;
+
+	area = nfp_cpp_area_alloc_with_name(cpp, dest, name, address, size);
+	if (!area)
+		return NULL;
+
+	if (nfp_cpp_area_acquire(area)) {
+		nfp_cpp_area_free(area);
+		return NULL;
+	}
+
+	return area;
 }
 
 /**
@@ -544,8 +535,7 @@ void nfp_cpp_area_release_free(struct nfp_cpp_area *area)
  * Read data from indicated CPP region.
  *
  * NOTE: @offset and @length must be 32-bit aligned values.
- *
- * NOTE: Area must have been locked down with an 'acquire'.
+ * Area must have been locked down with an 'acquire'.
  *
  * Return: length of io, or -ERRNO
  */
@@ -566,8 +556,7 @@ int nfp_cpp_area_read(struct nfp_cpp_area *area,
  * Write data to indicated CPP region.
  *
  * NOTE: @offset and @length must be 32-bit aligned values.
- *
- * NOTE: Area must have been locked down with an 'acquire'.
+ * Area must have been locked down with an 'acquire'.
  *
  * Return: length of io, or -ERRNO
  */
@@ -579,24 +568,14 @@ int nfp_cpp_area_write(struct nfp_cpp_area *area,
 }
 
 /**
- * nfp_cpp_area_check_range() - check if address range fits in CPP area
- * @area:	CPP area handle
- * @offset:	offset into CPP target
- * @length:	size of address range in bytes
+ * nfp_cpp_area_size() - return size of a CPP area
+ * @cpp_area:	CPP area handle
  *
- * Check if address range fits within CPP area.  Return 0 if area
- * fits or -EFAULT on error.
- *
- * Return: 0, or -ERRNO
+ * Return: Size of the area
  */
-int nfp_cpp_area_check_range(struct nfp_cpp_area *area,
-			     unsigned long long offset, unsigned long length)
+size_t nfp_cpp_area_size(struct nfp_cpp_area *cpp_area)
 {
-	if (offset < area->offset ||
-	    offset + length > area->offset + area->size)
-		return -EFAULT;
-
-	return 0;
+	return cpp_area->size;
 }
 
 /**
@@ -695,18 +674,20 @@ void __iomem *nfp_cpp_area_iomem(struct nfp_cpp_area *area)
  * @offset:	Offset into area
  * @value:	Pointer to read buffer
  *
- * Return: length of the io, or -ERRNO
+ * Return: 0 on success, or -ERRNO
  */
 int nfp_cpp_area_readl(struct nfp_cpp_area *area,
 		       unsigned long offset, u32 *value)
 {
 	u8 tmp[4];
-	int err;
+	int n;
 
-	err = nfp_cpp_area_read(area, offset, &tmp, sizeof(tmp));
+	n = nfp_cpp_area_read(area, offset, &tmp, sizeof(tmp));
+	if (n != sizeof(tmp))
+		return n < 0 ? n : -EIO;
+
 	*value = get_unaligned_le32(tmp);
-
-	return err;
+	return 0;
 }
 
 /**
@@ -715,16 +696,18 @@ int nfp_cpp_area_readl(struct nfp_cpp_area *area,
  * @offset:	Offset into area
  * @value:	Value to write
  *
- * Return: length of the io, or -ERRNO
+ * Return: 0 on success, or -ERRNO
  */
 int nfp_cpp_area_writel(struct nfp_cpp_area *area,
 			unsigned long offset, u32 value)
 {
 	u8 tmp[4];
+	int n;
 
 	put_unaligned_le32(value, tmp);
+	n = nfp_cpp_area_write(area, offset, &tmp, sizeof(tmp));
 
-	return nfp_cpp_area_write(area, offset, &tmp, sizeof(tmp));
+	return n == sizeof(tmp) ? 0 : n < 0 ? n : -EIO;
 }
 
 /**
@@ -733,18 +716,20 @@ int nfp_cpp_area_writel(struct nfp_cpp_area *area,
  * @offset:	Offset into area
  * @value:	Pointer to read buffer
  *
- * Return: length of the io, or -ERRNO
+ * Return: 0 on success, or -ERRNO
  */
 int nfp_cpp_area_readq(struct nfp_cpp_area *area,
 		       unsigned long offset, u64 *value)
 {
 	u8 tmp[8];
-	int err;
+	int n;
 
-	err = nfp_cpp_area_read(area, offset, &tmp, sizeof(tmp));
+	n = nfp_cpp_area_read(area, offset, &tmp, sizeof(tmp));
+	if (n != sizeof(tmp))
+		return n < 0 ? n : -EIO;
+
 	*value = get_unaligned_le64(tmp);
-
-	return err;
+	return 0;
 }
 
 /**
@@ -753,16 +738,18 @@ int nfp_cpp_area_readq(struct nfp_cpp_area *area,
  * @offset:	Offset into area
  * @value:	Value to write
  *
- * Return: length of the io, or -ERRNO
+ * Return: 0 on success, or -ERRNO
  */
 int nfp_cpp_area_writeq(struct nfp_cpp_area *area,
 			unsigned long offset, u64 value)
 {
 	u8 tmp[8];
+	int n;
 
 	put_unaligned_le64(value, tmp);
+	n = nfp_cpp_area_write(area, offset, &tmp, sizeof(tmp));
 
-	return nfp_cpp_area_write(area, offset, &tmp, sizeof(tmp));
+	return n == sizeof(tmp) ? 0 : n < 0 ? n : -EIO;
 }
 
 /**
@@ -924,18 +911,9 @@ area_cache_put(struct nfp_cpp *cpp, struct nfp_cpp_area_cache *cache)
 	mutex_unlock(&cpp->area_cache_mutex);
 }
 
-/**
- * nfp_cpp_read() - read from CPP target
- * @cpp:		CPP handle
- * @destination:	CPP id
- * @address:		offset into CPP target
- * @kernel_vaddr:	kernel buffer for result
- * @length:		number of bytes to read
- *
- * Return: length of io, or -ERRNO
- */
-int nfp_cpp_read(struct nfp_cpp *cpp, u32 destination,
-		 unsigned long long address, void *kernel_vaddr, size_t length)
+static int __nfp_cpp_read(struct nfp_cpp *cpp, u32 destination,
+			  unsigned long long address, void *kernel_vaddr,
+			  size_t length)
 {
 	struct nfp_cpp_area_cache *cache;
 	struct nfp_cpp_area *area;
@@ -968,18 +946,43 @@ int nfp_cpp_read(struct nfp_cpp *cpp, u32 destination,
 }
 
 /**
- * nfp_cpp_write() - write to CPP target
+ * nfp_cpp_read() - read from CPP target
  * @cpp:		CPP handle
  * @destination:	CPP id
  * @address:		offset into CPP target
- * @kernel_vaddr:	kernel buffer to read from
- * @length:		number of bytes to write
+ * @kernel_vaddr:	kernel buffer for result
+ * @length:		number of bytes to read
  *
  * Return: length of io, or -ERRNO
  */
-int nfp_cpp_write(struct nfp_cpp *cpp, u32 destination,
-		  unsigned long long address,
-		  const void *kernel_vaddr, size_t length)
+int nfp_cpp_read(struct nfp_cpp *cpp, u32 destination,
+		 unsigned long long address, void *kernel_vaddr,
+		 size_t length)
+{
+	size_t n, offset;
+	int ret;
+
+	for (offset = 0; offset < length; offset += n) {
+		unsigned long long r_addr = address + offset;
+
+		/* make first read smaller to align to safe window */
+		n = min_t(size_t, length - offset,
+			  ALIGN(r_addr + 1, NFP_CPP_SAFE_AREA_SIZE) - r_addr);
+
+		ret = __nfp_cpp_read(cpp, destination, address + offset,
+				     kernel_vaddr + offset, n);
+		if (ret < 0)
+			return ret;
+		if (ret != n)
+			return offset + n;
+	}
+
+	return length;
+}
+
+static int __nfp_cpp_write(struct nfp_cpp *cpp, u32 destination,
+			   unsigned long long address,
+			   const void *kernel_vaddr, size_t length)
 {
 	struct nfp_cpp_area_cache *cache;
 	struct nfp_cpp_area *area;
@@ -1009,6 +1012,41 @@ int nfp_cpp_write(struct nfp_cpp *cpp, u32 destination,
 		nfp_cpp_area_release_free(area);
 
 	return err;
+}
+
+/**
+ * nfp_cpp_write() - write to CPP target
+ * @cpp:		CPP handle
+ * @destination:	CPP id
+ * @address:		offset into CPP target
+ * @kernel_vaddr:	kernel buffer to read from
+ * @length:		number of bytes to write
+ *
+ * Return: length of io, or -ERRNO
+ */
+int nfp_cpp_write(struct nfp_cpp *cpp, u32 destination,
+		  unsigned long long address,
+		  const void *kernel_vaddr, size_t length)
+{
+	size_t n, offset;
+	int ret;
+
+	for (offset = 0; offset < length; offset += n) {
+		unsigned long long w_addr = address + offset;
+
+		/* make first write smaller to align to safe window */
+		n = min_t(size_t, length - offset,
+			  ALIGN(w_addr + 1, NFP_CPP_SAFE_AREA_SIZE) - w_addr);
+
+		ret = __nfp_cpp_write(cpp, destination, address + offset,
+				      kernel_vaddr + offset, n);
+		if (ret < 0)
+			return ret;
+		if (ret != n)
+			return offset + n;
+	}
+
+	return length;
 }
 
 /* Return the correct CPP address, and fixup xpb_addr as needed. */
@@ -1050,7 +1088,7 @@ static u32 nfp_xpb_to_cpp(struct nfp_cpp *cpp, u32 *xpb_addr)
  * @xpb_addr:	Address for operation
  * @value:	Pointer to read buffer
  *
- * Return: length of the io, or -ERRNO
+ * Return: 0 on success, or -ERRNO
  */
 int nfp_xpb_readl(struct nfp_cpp *cpp, u32 xpb_addr, u32 *value)
 {
@@ -1065,7 +1103,7 @@ int nfp_xpb_readl(struct nfp_cpp *cpp, u32 xpb_addr, u32 *value)
  * @xpb_addr:	Address for operation
  * @value:	Value to write
  *
- * Return: length of the io, or -ERRNO
+ * Return: 0 on success, or -ERRNO
  */
 int nfp_xpb_writel(struct nfp_cpp *cpp, u32 xpb_addr, u32 value)
 {
@@ -1083,7 +1121,7 @@ int nfp_xpb_writel(struct nfp_cpp *cpp, u32 xpb_addr, u32 value)
  *
  * KERNEL: This operation is safe to call in interrupt or softirq context.
  *
- * Return: length of the io, or -ERRNO
+ * Return: 0 on success, or -ERRNO
  */
 int nfp_xpb_writelm(struct nfp_cpp *cpp, u32 xpb_tgt,
 		    u32 mask, u32 value)
@@ -1125,10 +1163,10 @@ nfp_cpp_from_operations(const struct nfp_cpp_operations *ops,
 {
 	const u32 arm = NFP_CPP_ID(NFP_CPP_TARGET_ARM, NFP_CPP_ACTION_RW, 0);
 	struct nfp_cpp *cpp;
+	int ifc, err;
 	u32 mask[2];
 	u32 xpbaddr;
 	size_t tgt;
-	int err;
 
 	cpp = kzalloc(sizeof(*cpp), GFP_KERNEL);
 	if (!cpp) {
@@ -1138,9 +1176,19 @@ nfp_cpp_from_operations(const struct nfp_cpp_operations *ops,
 
 	cpp->op = ops;
 	cpp->priv = priv;
-	cpp->interface = ops->get_interface(parent);
-	if (ops->read_serial)
-		ops->read_serial(parent, cpp->serial);
+
+	ifc = ops->get_interface(parent);
+	if (ifc < 0) {
+		err = ifc;
+		goto err_free_cpp;
+	}
+	cpp->interface = ifc;
+	if (ops->read_serial) {
+		err = ops->read_serial(parent, cpp->serial);
+		if (err)
+			goto err_free_cpp;
+	}
+
 	rwlock_init(&cpp->resource_lock);
 	init_waitqueue_head(&cpp->waitq);
 	lockdep_set_class(&cpp->resource_lock, &nfp_cpp_resource_lock_key);
@@ -1153,7 +1201,7 @@ nfp_cpp_from_operations(const struct nfp_cpp_operations *ops,
 	err = device_register(&cpp->dev);
 	if (err < 0) {
 		put_device(&cpp->dev);
-		goto err_dev;
+		goto err_free_cpp;
 	}
 
 	dev_set_drvdata(&cpp->dev, cpp);
@@ -1193,6 +1241,12 @@ nfp_cpp_from_operations(const struct nfp_cpp_operations *ops,
 	nfp_cpp_readl(cpp, arm, NFP_ARM_GCSR + NFP_ARM_GCSR_SOFTMODEL3,
 		      &mask[1]);
 
+	err = nfp_cpp_set_mu_locality_lsb(cpp);
+	if (err < 0) {
+		dev_err(parent,	"Can't calculate MU locality bit offset\n");
+		goto err_out;
+	}
+
 	dev_info(cpp->dev.parent, "Model: 0x%08x, SN: %pM, Ifc: 0x%04x\n",
 		 nfp_cpp_model(cpp), cpp->serial, nfp_cpp_interface(cpp));
 
@@ -1200,7 +1254,7 @@ nfp_cpp_from_operations(const struct nfp_cpp_operations *ops,
 
 err_out:
 	device_unregister(&cpp->dev);
-err_dev:
+err_free_cpp:
 	kfree(cpp);
 err_malloc:
 	return ERR_PTR(err);

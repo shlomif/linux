@@ -172,17 +172,16 @@ retry:
 	return rc;
 }
 
-static int hp_sw_prep_fn(struct scsi_device *sdev, struct request *req)
+static blk_status_t hp_sw_prep_fn(struct scsi_device *sdev, struct request *req)
 {
 	struct hp_sw_dh_data *h = sdev->handler_data;
-	int ret = BLKPREP_OK;
 
 	if (h->path_state != HP_SW_PATH_ACTIVE) {
-		ret = BLKPREP_KILL;
 		req->rq_flags |= RQF_QUIET;
+		return BLK_STS_IOERR;
 	}
-	return ret;
 
+	return BLK_STS_OK;
 }
 
 /*
@@ -218,24 +217,28 @@ static int hp_sw_bus_attach(struct scsi_device *sdev)
 
 	h = kzalloc(sizeof(*h), GFP_KERNEL);
 	if (!h)
-		return -ENOMEM;
+		return SCSI_DH_NOMEM;
 	h->path_state = HP_SW_PATH_UNINITIALIZED;
 	h->retries = HP_SW_RETRIES;
 	h->sdev = sdev;
 
 	ret = hp_sw_tur(sdev, h);
-	if (ret != SCSI_DH_OK || h->path_state == HP_SW_PATH_UNINITIALIZED)
+	if (ret != SCSI_DH_OK)
 		goto failed;
+	if (h->path_state == HP_SW_PATH_UNINITIALIZED) {
+		ret = SCSI_DH_NOSYS;
+		goto failed;
+	}
 
 	sdev_printk(KERN_INFO, sdev, "%s: attached to %s path\n",
 		    HP_SW_NAME, h->path_state == HP_SW_PATH_ACTIVE?
 		    "active":"passive");
 
 	sdev->handler_data = h;
-	return 0;
+	return SCSI_DH_OK;
 failed:
 	kfree(h);
-	return -EINVAL;
+	return ret;
 }
 
 static void hp_sw_bus_detach( struct scsi_device *sdev )

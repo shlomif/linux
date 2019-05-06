@@ -77,13 +77,6 @@ static int __jfs_set_acl(tid_t tid, struct inode *inode, int type,
 	switch (type) {
 	case ACL_TYPE_ACCESS:
 		ea_name = XATTR_NAME_POSIX_ACL_ACCESS;
-		if (acl) {
-			rc = posix_acl_update_mode(inode, &inode->i_mode, &acl);
-			if (rc)
-				return rc;
-			inode->i_ctime = current_time(inode);
-			mark_inode_dirty(inode);
-		}
 		break;
 	case ACL_TYPE_DEFAULT:
 		ea_name = XATTR_NAME_POSIX_ACL_DEFAULT;
@@ -115,12 +108,27 @@ int jfs_set_acl(struct inode *inode, struct posix_acl *acl, int type)
 {
 	int rc;
 	tid_t tid;
+	int update_mode = 0;
+	umode_t mode = inode->i_mode;
 
 	tid = txBegin(inode->i_sb, 0);
 	mutex_lock(&JFS_IP(inode)->commit_mutex);
+	if (type == ACL_TYPE_ACCESS && acl) {
+		rc = posix_acl_update_mode(inode, &mode, &acl);
+		if (rc)
+			goto end_tx;
+		update_mode = 1;
+	}
 	rc = __jfs_set_acl(tid, inode, type, acl);
-	if (!rc)
+	if (!rc) {
+		if (update_mode) {
+			inode->i_mode = mode;
+			inode->i_ctime = current_time(inode);
+			mark_inode_dirty(inode);
+		}
 		rc = txCommit(tid, 1, &inode, 0);
+	}
+end_tx:
 	txEnd(tid);
 	mutex_unlock(&JFS_IP(inode)->commit_mutex);
 	return rc;
@@ -138,12 +146,16 @@ int jfs_init_acl(tid_t tid, struct inode *inode, struct inode *dir)
 	if (default_acl) {
 		rc = __jfs_set_acl(tid, inode, ACL_TYPE_DEFAULT, default_acl);
 		posix_acl_release(default_acl);
+	} else {
+		inode->i_default_acl = NULL;
 	}
 
 	if (acl) {
 		if (!rc)
 			rc = __jfs_set_acl(tid, inode, ACL_TYPE_ACCESS, acl);
 		posix_acl_release(acl);
+	} else {
+		inode->i_acl = NULL;
 	}
 
 	JFS_IP(inode)->mode2 = (JFS_IP(inode)->mode2 & 0xffff0000) |

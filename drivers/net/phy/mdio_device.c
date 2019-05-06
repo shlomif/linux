@@ -1,17 +1,14 @@
+// SPDX-License-Identifier: GPL-2.0+
 /* Framework for MDIO devices, other than PHYs.
  *
  * Copyright (c) 2016 Andrew Lunn <andrew@lunn.ch>
- *
- * This program is free software; you can redistribute  it and/or modify it
- * under  the terms of  the GNU General  Public License as published by the
- * Free Software Foundation;  either version 2 of the  License, or (at your
- * option) any later version.
- *
  */
 
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 
 #include <linux/errno.h>
+#include <linux/gpio.h>
+#include <linux/gpio/consumer.h>
 #include <linux/init.h>
 #include <linux/interrupt.h>
 #include <linux/kernel.h>
@@ -22,6 +19,7 @@
 #include <linux/slab.h>
 #include <linux/string.h>
 #include <linux/unistd.h>
+#include <linux/delay.h>
 
 void mdio_device_free(struct mdio_device *mdiodev)
 {
@@ -114,6 +112,21 @@ void mdio_device_remove(struct mdio_device *mdiodev)
 }
 EXPORT_SYMBOL(mdio_device_remove);
 
+void mdio_device_reset(struct mdio_device *mdiodev, int value)
+{
+	unsigned int d;
+
+	if (!mdiodev->reset)
+		return;
+
+	gpiod_set_value(mdiodev->reset, value);
+
+	d = value ? mdiodev->reset_assert_delay : mdiodev->reset_deassert_delay;
+	if (d)
+		usleep_range(d, d + max_t(unsigned int, d / 10, 100));
+}
+EXPORT_SYMBOL(mdio_device_reset);
+
 /**
  * mdio_probe - probe an MDIO device
  * @dev: device to probe
@@ -128,8 +141,16 @@ static int mdio_probe(struct device *dev)
 	struct mdio_driver *mdiodrv = to_mdio_driver(drv);
 	int err = 0;
 
-	if (mdiodrv->probe)
+	if (mdiodrv->probe) {
+		/* Deassert the reset signal */
+		mdio_device_reset(mdiodev, 0);
+
 		err = mdiodrv->probe(mdiodev);
+		if (err) {
+			/* Assert the reset signal */
+			mdio_device_reset(mdiodev, 1);
+		}
+	}
 
 	return err;
 }
@@ -140,8 +161,12 @@ static int mdio_remove(struct device *dev)
 	struct device_driver *drv = mdiodev->dev.driver;
 	struct mdio_driver *mdiodrv = to_mdio_driver(drv);
 
-	if (mdiodrv->remove)
+	if (mdiodrv->remove) {
 		mdiodrv->remove(mdiodev);
+
+		/* Assert the reset signal */
+		mdio_device_reset(mdiodev, 1);
+	}
 
 	return 0;
 }

@@ -15,13 +15,14 @@
 #include <drm/drmP.h>
 #include <drm/drm_crtc.h>
 #include <drm/drm_fb_helper.h>
-#include <drm/drm_crtc_helper.h>
+#include <drm/drm_probe_helper.h>
 #include <drm/exynos_drm.h>
+
+#include <linux/console.h>
 
 #include "exynos_drm_drv.h"
 #include "exynos_drm_fb.h"
 #include "exynos_drm_fbdev.h"
-#include "exynos_drm_iommu.h"
 
 #define MAX_CONNECTOR		4
 #define PREFERRED_BPP		32
@@ -87,7 +88,6 @@ static int exynos_drm_fbdev_update(struct drm_fb_helper *helper,
 	}
 
 	fbi->par = helper;
-	fbi->flags = FBINFO_FLAG_DEFAULT;
 	fbi->fbops = &exynos_drm_fb_ops;
 
 	drm_fb_helper_fill_fix(fbi, fb->pitches[0], fb->format->depth);
@@ -183,24 +183,6 @@ static const struct drm_fb_helper_funcs exynos_drm_fb_helper_funcs = {
 	.fb_probe =	exynos_drm_fbdev_create,
 };
 
-static bool exynos_drm_fbdev_is_anything_connected(struct drm_device *dev)
-{
-	struct drm_connector *connector;
-	bool ret = false;
-
-	mutex_lock(&dev->mode_config.mutex);
-	list_for_each_entry(connector, &dev->mode_config.connector_list, head) {
-		if (connector->status != connector_status_connected)
-			continue;
-
-		ret = true;
-		break;
-	}
-	mutex_unlock(&dev->mode_config.mutex);
-
-	return ret;
-}
-
 int exynos_drm_fbdev_init(struct drm_device *dev)
 {
 	struct exynos_drm_fbdev *fbdev;
@@ -208,10 +190,7 @@ int exynos_drm_fbdev_init(struct drm_device *dev)
 	struct drm_fb_helper *helper;
 	int ret;
 
-	if (!dev->mode_config.num_crtc || !dev->mode_config.num_connector)
-		return 0;
-
-	if (!exynos_drm_fbdev_is_anything_connected(dev))
+	if (!dev->mode_config.num_crtc)
 		return 0;
 
 	fbdev = kzalloc(sizeof(*fbdev), GFP_KERNEL);
@@ -289,23 +268,3 @@ void exynos_drm_fbdev_fini(struct drm_device *dev)
 	private->fb_helper = NULL;
 }
 
-void exynos_drm_fbdev_restore_mode(struct drm_device *dev)
-{
-	struct exynos_drm_private *private = dev->dev_private;
-
-	if (!private || !private->fb_helper)
-		return;
-
-	drm_fb_helper_restore_fbdev_mode_unlocked(private->fb_helper);
-}
-
-void exynos_drm_output_poll_changed(struct drm_device *dev)
-{
-	struct exynos_drm_private *private = dev->dev_private;
-	struct drm_fb_helper *fb_helper = private->fb_helper;
-
-	if (fb_helper)
-		drm_fb_helper_hotplug_event(fb_helper);
-	else
-		exynos_drm_fbdev_init(dev);
-}

@@ -16,12 +16,12 @@
 #include <drm/drm_atomic.h>
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_crtc.h>
-#include <drm/drm_crtc_helper.h>
 #include <drm/drm_fb_cma_helper.h>
 #include <drm/drm_gem_cma_helper.h>
 #include <drm/drm_of.h>
 #include <drm/drm_panel.h>
 #include <drm/drm_plane_helper.h>
+#include <drm/drm_probe_helper.h>
 #include <drm/drm_simple_kms_helper.h>
 #include <drm/drmP.h>
 
@@ -74,7 +74,6 @@ static void mxsfb_panel_connector_destroy(struct drm_connector *connector)
 }
 
 static const struct drm_connector_funcs mxsfb_panel_connector_funcs = {
-	.dpms			= drm_atomic_helper_connector_dpms,
 	.detect			= mxsfb_panel_connector_detect,
 	.fill_modes		= drm_helper_probe_single_connector_modes,
 	.destroy		= mxsfb_panel_connector_destroy,

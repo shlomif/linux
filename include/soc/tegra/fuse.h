@@ -60,10 +60,11 @@ struct tegra_sku_info {
 
 u32 tegra_read_straps(void);
 u32 tegra_read_ram_code(void);
-u32 tegra_read_chipid(void);
 int tegra_fuse_readl(unsigned long offset, u32 *value);
 
 extern struct tegra_sku_info tegra_sku_info;
+
+struct device *tegra_soc_device_register(void);
 
 #endif /* __ASSEMBLY__ */
 

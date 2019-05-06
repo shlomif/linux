@@ -415,7 +415,7 @@ static int mmc_clk_set_rate(struct clk_hw *hw, unsigned long rate,
 	return mmc_clk_set_timing(hw, rate);
 }
 
-static struct clk_ops clk_mmc_ops = {
+static const struct clk_ops clk_mmc_ops = {
 	.prepare = mmc_clk_prepare,
 	.determine_rate = mmc_clk_determine_rate,
 	.set_rate = mmc_clk_set_rate,
@@ -435,7 +435,7 @@ static struct clk *hisi_register_clk_mmc(struct hisi_mmc_clock *mmc_clk,
 
 	init.name = mmc_clk->name;
 	init.ops = &clk_mmc_ops;
-	init.flags = mmc_clk->flags | CLK_IS_BASIC;
+	init.flags = mmc_clk->flags;
 	init.parent_names = (mmc_clk->parent_name ? &mmc_clk->parent_name : NULL);
 	init.num_parents = (mmc_clk->parent_name ? 1 : 0);
 	mclk->hw.init = &init;

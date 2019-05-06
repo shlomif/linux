@@ -307,6 +307,7 @@ int qed_dmae_host2host(struct qed_hwfn *p_hwfn,
  * @param num_elems
  * @param elem_size
  * @param p_chain
+ * @param ext_pbl - a possible external PBL
  *
  * @return int
  */
@@ -315,7 +316,9 @@ qed_chain_alloc(struct qed_dev *cdev,
 		enum qed_chain_use_mode intended_use,
 		enum qed_chain_mode mode,
 		enum qed_chain_cnt_type cnt_type,
-		u32 num_elems, size_t elem_size, struct qed_chain *p_chain);
+		u32 num_elems,
+		size_t elem_size,
+		struct qed_chain *p_chain, struct qed_chain_ext_pbl *ext_pbl);
 
 /**
  * @brief qed_chain_free - Free chain DMA memory
@@ -440,38 +443,75 @@ int qed_final_cleanup(struct qed_hwfn *p_hwfn,
 		      struct qed_ptt *p_ptt, u16 id, bool is_vf);
 
 /**
- * @brief qed_set_rxq_coalesce - Configure coalesce parameters for an Rx queue
- * The fact that we can configure coalescing to up to 511, but on varying
- * accuracy [the bigger the value the less accurate] up to a mistake of 3usec
- * for the highest values.
+ * @brief qed_get_queue_coalesce - Retrieve coalesce value for a given queue.
  *
  * @param p_hwfn
- * @param p_ptt
- * @param coalesce - Coalesce value in micro seconds.
- * @param qid - Queue index.
- * @param qid - SB Id
+ * @param p_coal - store coalesce value read from the hardware.
+ * @param p_handle
  *
  * @return int
- */
-int qed_set_rxq_coalesce(struct qed_hwfn *p_hwfn, struct qed_ptt *p_ptt,
-			 u16 coalesce, u16 qid, u16 sb_id);
+ **/
+int qed_get_queue_coalesce(struct qed_hwfn *p_hwfn, u16 *coal, void *handle);
 
 /**
- * @brief qed_set_txq_coalesce - Configure coalesce parameters for a Tx queue
- * While the API allows setting coalescing per-qid, all tx queues sharing a
- * SB should be in same range [i.e., either 0-0x7f, 0x80-0xff or 0x100-0x1ff]
- * otherwise configuration would break.
+ * @brief qed_set_queue_coalesce - Configure coalesce parameters for Rx and
+ *    Tx queue. The fact that we can configure coalescing to up to 511, but on
+ *    varying accuracy [the bigger the value the less accurate] up to a mistake
+ *    of 3usec for the highest values.
+ *    While the API allows setting coalescing per-qid, all queues sharing a SB
+ *    should be in same range [i.e., either 0-0x7f, 0x80-0xff or 0x100-0x1ff]
+ *    otherwise configuration would break.
+ *
+ *
+ * @param rx_coal - Rx Coalesce value in micro seconds.
+ * @param tx_coal - TX Coalesce value in micro seconds.
+ * @param p_handle
+ *
+ * @return int
+ **/
+int
+qed_set_queue_coalesce(u16 rx_coal, u16 tx_coal, void *p_handle);
+
+/**
+ * @brief qed_pglueb_set_pfid_enable - Enable or disable PCI BUS MASTER
  *
  * @param p_hwfn
  * @param p_ptt
- * @param coalesce - Coalesce value in micro seconds.
- * @param qid - Queue index.
- * @param qid - SB Id
+ * @param b_enable - true/false
  *
  * @return int
  */
-int qed_set_txq_coalesce(struct qed_hwfn *p_hwfn, struct qed_ptt *p_ptt,
-			 u16 coalesce, u16 qid, u16 sb_id);
+int qed_pglueb_set_pfid_enable(struct qed_hwfn *p_hwfn,
+			       struct qed_ptt *p_ptt, bool b_enable);
+
+/**
+ * @brief db_recovery_add - add doorbell information to the doorbell
+ * recovery mechanism.
+ *
+ * @param cdev
+ * @param db_addr - doorbell address
+ * @param db_data - address of where db_data is stored
+ * @param db_width - doorbell is 32b pr 64b
+ * @param db_space - doorbell recovery addresses are user or kernel space
+ */
+int qed_db_recovery_add(struct qed_dev *cdev,
+			void __iomem *db_addr,
+			void *db_data,
+			enum qed_db_rec_width db_width,
+			enum qed_db_rec_space db_space);
+
+/**
+ * @brief db_recovery_del - remove doorbell information from the doorbell
+ * recovery mechanism. db_data serves as key (db_addr is not unique).
+ *
+ * @param cdev
+ * @param db_addr - doorbell address
+ * @param db_data - address where db_data is stored. Serves as key for the
+ *                  entry to delete.
+ */
+int qed_db_recovery_del(struct qed_dev *cdev,
+			void __iomem *db_addr, void *db_data);
+
 
 const char *qed_hw_get_resc_name(enum qed_resources res_id);
 #endif

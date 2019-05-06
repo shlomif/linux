@@ -182,9 +182,11 @@ change five years from now.
 
 If your patch fixes a bug in a specific commit, e.g. you found an issue using
 ``git bisect``, please use the 'Fixes:' tag with the first 12 characters of
-the SHA-1 ID, and the one line summary.  For example::
+the SHA-1 ID, and the one line summary.  Do not split the tag across multiple
+lines, tags are exempt from the "wrap at 75 columns" rule in order to simplify
+parsing scripts.  For example::
 
-	Fixes: e21d2170f366 ("video: remove unnecessary platform_set_drvdata()")
+	Fixes: 54a4f0239f2e ("KVM: MMU: make kvm_mmu_zap_page() return the number of pages it actually freed")
 
 The following ``git config`` settings can be used to add a pretty format for
 outputting the above style in the ``git log`` or ``git show`` commands::
@@ -413,7 +415,7 @@ e-mail discussions.
 
 
 
-11) Sign your work — the Developer's Certificate of Origin
+11) Sign your work - the Developer's Certificate of Origin
 ----------------------------------------------------------
 
 To improve tracking of who did what, especially with patches that can
@@ -510,8 +512,8 @@ tracking your trees, and to people trying to troubleshoot bugs in your
 tree.
 
 
-12) When to use Acked-by: and Cc:
----------------------------------
+12) When to use Acked-by:, Cc:, and Co-developed-by:
+-------------------------------------------------------
 
 The Signed-off-by: tag indicates that the signer was involved in the
 development of the patch, or that he/she was in the patch's delivery path.
@@ -542,6 +544,11 @@ This is the only tag which might be added without an explicit action by the
 person it names - but it should indicate that this person was copied on the
 patch.  This tag documents that potentially interested parties
 have been included in the discussion.
+
+A Co-developed-by: states that the patch was also created by another developer
+along with the original author.  This is useful at times when multiple people
+work on a single patch.  Note, this person also needs to have a Signed-off-by:
+line in the patch as well.
 
 
 13) Using Reported-by:, Tested-by:, Reviewed-by:, Suggested-by: and Fixes:
@@ -606,6 +613,7 @@ which stable kernel versions should receive your fix. This is the preferred
 method for indicating a bug fixed by the patch. See :ref:`describe_changes`
 for more details.
 
+.. _the_canonical_patch_format:
 
 14) The canonical patch format
 ------------------------------
@@ -621,13 +629,13 @@ The canonical patch subject line is::
 
 The canonical patch message body contains the following:
 
-  - A ``from`` line specifying the patch author (only needed if the person
-    sending the patch is not the author).
-
-  - An empty line.
+  - A ``from`` line specifying the patch author, followed by an empty
+    line (only needed if the person sending the patch is not the author).
 
   - The body of the explanation, line wrapped at 75 columns, which will
     be copied to the permanent changelog to describe this patch.
+
+  - An empty line.
 
   - The ``Signed-off-by:`` lines, described above, which will
     also go in the changelog.
@@ -756,7 +764,7 @@ requests, especially from new, unknown developers.  If in doubt you can use
 the pull request as the cover letter for a normal posting of the patch
 series, giving the maintainer the option of using either.
 
-A pull request should have [GIT] or [PULL] in the subject line.  The
+A pull request should have [GIT PULL] in the subject line.  The
 request itself should include the repository name and the branch of
 interest on a single line; it should look something like::
 

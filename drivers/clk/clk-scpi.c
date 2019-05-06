@@ -71,15 +71,15 @@ static const struct clk_ops scpi_clk_ops = {
 };
 
 /* find closest match to given frequency in OPP table */
-static int __scpi_dvfs_round_rate(struct scpi_clk *clk, unsigned long rate)
+static long __scpi_dvfs_round_rate(struct scpi_clk *clk, unsigned long rate)
 {
 	int idx;
-	u32 fmin = 0, fmax = ~0, ftmp;
+	unsigned long fmin = 0, fmax = ~0, ftmp;
 	const struct scpi_opp *opp = clk->info->opps;
 
 	for (idx = 0; idx < clk->info->count; idx++, opp++) {
 		ftmp = opp->freq;
-		if (ftmp >= (u32)rate) {
+		if (ftmp >= rate) {
 			if (ftmp <= fmax)
 				fmax = ftmp;
 			break;
@@ -207,7 +207,7 @@ static int scpi_clk_add(struct device *dev, struct device_node *np,
 
 	count = of_property_count_strings(np, "clock-output-names");
 	if (count < 0) {
-		dev_err(dev, "%s: invalid clock output count\n", np->name);
+		dev_err(dev, "%pOFn: invalid clock output count\n", np);
 		return -EINVAL;
 	}
 
@@ -232,23 +232,25 @@ static int scpi_clk_add(struct device *dev, struct device_node *np,
 
 		if (of_property_read_string_index(np, "clock-output-names",
 						  idx, &name)) {
-			dev_err(dev, "invalid clock name @ %s\n", np->name);
+			dev_err(dev, "invalid clock name @ %pOFn\n", np);
 			return -EINVAL;
 		}
 
 		if (of_property_read_u32_index(np, "clock-indices",
 					       idx, &val)) {
-			dev_err(dev, "invalid clock index @ %s\n", np->name);
+			dev_err(dev, "invalid clock index @ %pOFn\n", np);
 			return -EINVAL;
 		}
 
 		sclk->id = val;
 
 		err = scpi_clk_ops_init(dev, match, sclk, name);
-		if (err)
+		if (err) {
 			dev_err(dev, "failed to register clock '%s'\n", name);
-		else
-			dev_dbg(dev, "Registered clock '%s'\n", name);
+			return err;
+		}
+
+		dev_dbg(dev, "Registered clock '%s'\n", name);
 		clk_data->clk[idx] = sclk;
 	}
 

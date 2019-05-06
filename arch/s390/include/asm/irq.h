@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef _ASM_IRQ_H
 #define _ASM_IRQ_H
 
@@ -61,6 +62,7 @@ enum interruption_class {
 	IRQIO_MSI,
 	IRQIO_VIR,
 	IRQIO_VAI,
+	IRQIO_GAL,
 	NMI_NMI,
 	CPU_RST,
 	NR_ARCH_IRQS

@@ -1,12 +1,9 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * r8a7792 processor support - PFC hardware block.
  *
  * Copyright (C) 2013-2014 Renesas Electronics Corporation
  * Copyright (C) 2016 Cogent Embedded, Inc., <source@cogentembedded.com>
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2
- * as published by the Free Software Foundation.
  */
 
 #include <linux/kernel.h>
@@ -1137,6 +1134,43 @@ static const unsigned int scif0_ctrl_pins[] = {
 static const unsigned int scif0_ctrl_mux[] = {
 	RTS0_N_MARK, CTS0_N_MARK,
 };
+/* - SCIF1 ------------------------------------------------------------------ */
+static const unsigned int scif1_data_pins[] = {
+	/* RX, TX */
+	RCAR_GP_PIN(10, 19), RCAR_GP_PIN(10, 18),
+};
+static const unsigned int scif1_data_mux[] = {
+	RX1_MARK, TX1_MARK,
+};
+static const unsigned int scif1_clk_pins[] = {
+	/* SCK */
+	RCAR_GP_PIN(10, 15),
+};
+static const unsigned int scif1_clk_mux[] = {
+	SCK1_MARK,
+};
+static const unsigned int scif1_ctrl_pins[] = {
+	/* RTS, CTS */
+	RCAR_GP_PIN(10, 17), RCAR_GP_PIN(10, 16),
+};
+static const unsigned int scif1_ctrl_mux[] = {
+	RTS1_N_MARK, CTS1_N_MARK,
+};
+/* - SCIF2 ------------------------------------------------------------------ */
+static const unsigned int scif2_data_pins[] = {
+	/* RX, TX */
+	RCAR_GP_PIN(10, 22), RCAR_GP_PIN(10, 21),
+};
+static const unsigned int scif2_data_mux[] = {
+	RX2_MARK, TX2_MARK,
+};
+static const unsigned int scif2_clk_pins[] = {
+	/* SCK */
+	RCAR_GP_PIN(10, 20),
+};
+static const unsigned int scif2_clk_mux[] = {
+	SCK2_MARK,
+};
 /* - SCIF3 ------------------------------------------------------------------ */
 static const unsigned int scif3_data_pins[] = {
 	/* RX, TX */
@@ -1440,7 +1474,7 @@ static const unsigned int vin1_clk_mux[] = {
 	VI1_CLK_MARK,
 };
 /* - VIN2 ------------------------------------------------------------------- */
-static const union vin_data vin2_data_pins = {
+static const union vin_data16 vin2_data_pins = {
 	.data16 = {
 		RCAR_GP_PIN(6, 4), RCAR_GP_PIN(6, 5),
 		RCAR_GP_PIN(6, 6), RCAR_GP_PIN(6, 7),
@@ -1452,7 +1486,7 @@ static const union vin_data vin2_data_pins = {
 		RCAR_GP_PIN(8, 11), RCAR_GP_PIN(8, 12),
 	},
 };
-static const union vin_data vin2_data_mux = {
+static const union vin_data16 vin2_data_mux = {
 	.data16 = {
 		VI2_D0_C0_MARK, VI2_D1_C1_MARK,
 		VI2_D2_C2_MARK,	VI2_D3_C3_MARK,
@@ -1490,7 +1524,7 @@ static const unsigned int vin2_clk_mux[] = {
 	VI2_CLK_MARK,
 };
 /* - VIN3 ------------------------------------------------------------------- */
-static const union vin_data vin3_data_pins = {
+static const union vin_data16 vin3_data_pins = {
 	.data16 = {
 		RCAR_GP_PIN(7, 4), RCAR_GP_PIN(7, 5),
 		RCAR_GP_PIN(7, 6), RCAR_GP_PIN(7, 7),
@@ -1502,7 +1536,7 @@ static const union vin_data vin3_data_pins = {
 		RCAR_GP_PIN(8, 15), RCAR_GP_PIN(8, 16),
 	},
 };
-static const union vin_data vin3_data_mux = {
+static const union vin_data16 vin3_data_mux = {
 	.data16 = {
 		VI3_D0_C0_MARK, VI3_D1_C1_MARK,
 		VI3_D2_C2_MARK,	VI3_D3_C3_MARK,
@@ -1540,7 +1574,7 @@ static const unsigned int vin3_clk_mux[] = {
 	VI3_CLK_MARK,
 };
 /* - VIN4 ------------------------------------------------------------------- */
-static const union vin_data vin4_data_pins = {
+static const union vin_data12 vin4_data_pins = {
 	.data12 = {
 		RCAR_GP_PIN(8, 4), RCAR_GP_PIN(8, 5),
 		RCAR_GP_PIN(8, 6), RCAR_GP_PIN(8, 7),
@@ -1550,7 +1584,7 @@ static const union vin_data vin4_data_pins = {
 		RCAR_GP_PIN(8, 14), RCAR_GP_PIN(8, 15),
 	},
 };
-static const union vin_data vin4_data_mux = {
+static const union vin_data12 vin4_data_mux = {
 	.data12 = {
 		VI4_D0_C0_MARK, VI4_D1_C1_MARK,
 		VI4_D2_C2_MARK, VI4_D3_C3_MARK,
@@ -1586,7 +1620,7 @@ static const unsigned int vin4_clk_mux[] = {
 	VI4_CLK_MARK,
 };
 /* - VIN5 ------------------------------------------------------------------- */
-static const union vin_data vin5_data_pins = {
+static const union vin_data12 vin5_data_pins = {
 	.data12 = {
 		RCAR_GP_PIN(9, 4), RCAR_GP_PIN(9, 5),
 		RCAR_GP_PIN(9, 6), RCAR_GP_PIN(9, 7),
@@ -1596,7 +1630,7 @@ static const union vin_data vin5_data_pins = {
 		RCAR_GP_PIN(9, 14), RCAR_GP_PIN(9, 15),
 	},
 };
-static const union vin_data vin5_data_mux = {
+static const union vin_data12 vin5_data_mux = {
 	.data12 = {
 		VI5_D0_C0_MARK, VI5_D1_C1_MARK,
 		VI5_D2_C2_MARK, VI5_D3_C3_MARK,
@@ -1680,6 +1714,11 @@ static const struct sh_pfc_pin_group pinmux_groups[] = {
 	SH_PFC_PIN_GROUP(scif0_data),
 	SH_PFC_PIN_GROUP(scif0_clk),
 	SH_PFC_PIN_GROUP(scif0_ctrl),
+	SH_PFC_PIN_GROUP(scif1_data),
+	SH_PFC_PIN_GROUP(scif1_clk),
+	SH_PFC_PIN_GROUP(scif1_ctrl),
+	SH_PFC_PIN_GROUP(scif2_data),
+	SH_PFC_PIN_GROUP(scif2_clk),
 	SH_PFC_PIN_GROUP(scif3_data),
 	SH_PFC_PIN_GROUP(scif3_clk),
 	SH_PFC_PIN_GROUP(sdhi0_data1),
@@ -1705,10 +1744,10 @@ static const struct sh_pfc_pin_group pinmux_groups[] = {
 	VIN_DATA_PIN_GROUP(vin1_data, 12),
 	VIN_DATA_PIN_GROUP(vin1_data, 10),
 	VIN_DATA_PIN_GROUP(vin1_data, 8),
-	VIN_DATA_PIN_GROUP(vin1_data_b, 24),
-	VIN_DATA_PIN_GROUP(vin1_data_b, 20),
+	VIN_DATA_PIN_GROUP(vin1_data, 24, _b),
+	VIN_DATA_PIN_GROUP(vin1_data, 20, _b),
 	SH_PFC_PIN_GROUP(vin1_data18_b),
-	VIN_DATA_PIN_GROUP(vin1_data_b, 16),
+	VIN_DATA_PIN_GROUP(vin1_data, 16, _b),
 	SH_PFC_PIN_GROUP(vin1_sync),
 	SH_PFC_PIN_GROUP(vin1_field),
 	SH_PFC_PIN_GROUP(vin1_clkenb),
@@ -1826,6 +1865,17 @@ static const char * const scif0_groups[] = {
 	"scif0_ctrl",
 };
 
+static const char * const scif1_groups[] = {
+	"scif1_data",
+	"scif1_clk",
+	"scif1_ctrl",
+};
+
+static const char * const scif2_groups[] = {
+	"scif2_data",
+	"scif2_clk",
+};
+
 static const char * const scif3_groups[] = {
 	"scif3_data",
 	"scif3_clk",
@@ -1863,6 +1913,7 @@ static const char * const vin1_groups[] = {
 	"vin1_data8",
 	"vin1_data24_b",
 	"vin1_data20_b",
+	"vin1_data18_b",
 	"vin1_data16_b",
 	"vin1_sync",
 	"vin1_field",
@@ -1924,6 +1975,8 @@ static const struct sh_pfc_function pinmux_functions[] = {
 	SH_PFC_FUNCTION(msiof1),
 	SH_PFC_FUNCTION(qspi),
 	SH_PFC_FUNCTION(scif0),
+	SH_PFC_FUNCTION(scif1),
+	SH_PFC_FUNCTION(scif2),
 	SH_PFC_FUNCTION(scif3),
 	SH_PFC_FUNCTION(sdhi0),
 	SH_PFC_FUNCTION(vin0),

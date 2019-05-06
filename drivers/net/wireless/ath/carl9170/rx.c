@@ -427,7 +427,7 @@ static int carl9170_rx_mac_status(struct ar9170 *ar,
 		if (head->plcp[6] & 0x80)
 			status->enc_flags |= RX_ENC_FLAG_SHORT_GI;
 
-		status->rate_idx = clamp(0, 75, head->plcp[3] & 0x7f);
+		status->rate_idx = clamp(head->plcp[3] & 0x7f, 0, 75);
 		status->encoding = RX_ENC_HT;
 		break;
 
@@ -481,7 +481,7 @@ static struct sk_buff *carl9170_rx_copy_data(u8 *buf, int len)
 	skb = dev_alloc_skb(len + reserved);
 	if (likely(skb)) {
 		skb_reserve(skb, reserved);
-		memcpy(skb_put(skb, len), buf, len);
+		skb_put_data(skb, buf, len);
 	}
 
 	return skb;
@@ -766,6 +766,7 @@ static void carl9170_rx_untie_data(struct ar9170 *ar, u8 *buf, int len)
 
 			goto drop;
 		}
+		/* fall through */
 
 	case AR9170_RX_STATUS_MPDU_MIDDLE:
 		/*  These are just data + mac status */
@@ -916,7 +917,7 @@ static void carl9170_rx_stream(struct ar9170 *ar, void *buf, unsigned int len)
 				}
 			}
 
-			memcpy(skb_put(ar->rx_failover, tlen), tbuf, tlen);
+			skb_put_data(ar->rx_failover, tbuf, tlen);
 			ar->rx_failover_missing -= tlen;
 
 			if (ar->rx_failover_missing <= 0) {
@@ -958,7 +959,7 @@ static void carl9170_rx_stream(struct ar9170 *ar, void *buf, unsigned int len)
 			 * the rx - descriptor comes round again.
 			 */
 
-			memcpy(skb_put(ar->rx_failover, tlen), tbuf, tlen);
+			skb_put_data(ar->rx_failover, tbuf, tlen);
 			ar->rx_failover_missing = clen - tlen;
 			return;
 		}

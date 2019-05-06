@@ -21,7 +21,6 @@
  * IN THE SOFTWARE.
  */
 
-#include <drm/drmP.h>
 #include <drm/i915_drm.h>
 #include "i915_drv.h"
 
@@ -64,7 +63,7 @@ static void i965_write_fence_reg(struct drm_i915_fence_reg *fence,
 	int fence_pitch_shift;
 	u64 val;
 
-	if (INTEL_INFO(fence->i915)->gen >= 6) {
+	if (INTEL_GEN(fence->i915) >= 6) {
 		fence_reg_lo = FENCE_REG_GEN6_LO(fence->id);
 		fence_reg_hi = FENCE_REG_GEN6_HI(fence->id);
 		fence_pitch_shift = GEN6_FENCE_PITCH_SHIFT;
@@ -193,9 +192,9 @@ static void fence_write(struct drm_i915_fence_reg *fence,
 	 * and explicitly managed for internal users.
 	 */
 
-	if (IS_GEN2(fence->i915))
+	if (IS_GEN(fence->i915, 2))
 		i830_write_fence_reg(fence, vma);
-	else if (IS_GEN3(fence->i915))
+	else if (IS_GEN(fence->i915, 3))
 		i915_write_fence_reg(fence, vma);
 	else
 		i965_write_fence_reg(fence, vma);
@@ -210,6 +209,7 @@ static void fence_write(struct drm_i915_fence_reg *fence,
 static int fence_update(struct drm_i915_fence_reg *fence,
 			struct i915_vma *vma)
 {
+	intel_wakeref_t wakeref;
 	int ret;
 
 	if (vma) {
@@ -223,24 +223,29 @@ static int fence_update(struct drm_i915_fence_reg *fence,
 			 i915_gem_object_get_tiling(vma->obj)))
 			return -EINVAL;
 
-		ret = i915_gem_active_retire(&vma->last_fence,
+		ret = i915_active_request_retire(&vma->last_fence,
 					     &vma->obj->base.dev->struct_mutex);
 		if (ret)
 			return ret;
 	}
 
 	if (fence->vma) {
-		ret = i915_gem_active_retire(&fence->vma->last_fence,
-				      &fence->vma->obj->base.dev->struct_mutex);
+		struct i915_vma *old = fence->vma;
+
+		ret = i915_active_request_retire(&old->last_fence,
+					     &old->obj->base.dev->struct_mutex);
 		if (ret)
 			return ret;
+
+		i915_vma_flush_writes(old);
 	}
 
 	if (fence->vma && fence->vma != vma) {
 		/* Ensure that all userspace CPU access is completed before
 		 * stealing the fence.
 		 */
-		i915_gem_release_mmap(fence->vma->obj);
+		GEM_BUG_ON(fence->vma->fence != fence);
+		i915_vma_revoke_mmap(fence->vma);
 
 		fence->vma->fence = NULL;
 		fence->vma = NULL;
@@ -252,9 +257,10 @@ static int fence_update(struct drm_i915_fence_reg *fence,
 	 * If the device is currently powered down, we will defer the write
 	 * to the runtime resume, see i915_gem_restore_fences().
 	 */
-	if (intel_runtime_pm_get_if_in_use(fence->i915)) {
+	wakeref = intel_runtime_pm_get_if_in_use(fence->i915);
+	if (wakeref) {
 		fence_write(fence, vma);
-		intel_runtime_pm_put(fence->i915);
+		intel_runtime_pm_put(fence->i915, wakeref);
 	}
 
 	if (vma) {
@@ -280,8 +286,7 @@ static int fence_update(struct drm_i915_fence_reg *fence,
  *
  * 0 on success, negative error code on failure.
  */
-int
-i915_vma_put_fence(struct i915_vma *vma)
+int i915_vma_put_fence(struct i915_vma *vma)
 {
 	struct drm_i915_fence_reg *fence = vma->fence;
 
@@ -299,6 +304,8 @@ static struct drm_i915_fence_reg *fence_find(struct drm_i915_private *dev_priv)
 	struct drm_i915_fence_reg *fence;
 
 	list_for_each_entry(fence, &dev_priv->mm.fence_list, link) {
+		GEM_BUG_ON(fence->vma && fence->vma->fence != fence);
+
 		if (fence->pin_count)
 			continue;
 
@@ -313,7 +320,7 @@ static struct drm_i915_fence_reg *fence_find(struct drm_i915_private *dev_priv)
 }
 
 /**
- * i915_vma_get_fence - set up fencing for a vma
+ * i915_vma_pin_fence - set up fencing for a vma
  * @vma: vma to map through a fence reg
  *
  * When mapping objects through the GTT, userspace wants to be able to write
@@ -331,10 +338,11 @@ static struct drm_i915_fence_reg *fence_find(struct drm_i915_private *dev_priv)
  * 0 on success, negative error code on failure.
  */
 int
-i915_vma_get_fence(struct i915_vma *vma)
+i915_vma_pin_fence(struct i915_vma *vma)
 {
 	struct drm_i915_fence_reg *fence;
 	struct i915_vma *set = i915_gem_object_is_tiled(vma->obj) ? vma : NULL;
+	int err;
 
 	/* Note that we revoke fences on runtime suspend. Therefore the user
 	 * must keep the device awake whilst using the fence.
@@ -344,6 +352,8 @@ i915_vma_get_fence(struct i915_vma *vma)
 	/* Just update our place in the LRU if our fence is getting reused. */
 	if (vma->fence) {
 		fence = vma->fence;
+		GEM_BUG_ON(fence->vma != vma);
+		fence->pin_count++;
 		if (!fence->dirty) {
 			list_move_tail(&fence->link,
 				       &fence->i915->mm.fence_list);
@@ -353,10 +363,76 @@ i915_vma_get_fence(struct i915_vma *vma)
 		fence = fence_find(vma->vm->i915);
 		if (IS_ERR(fence))
 			return PTR_ERR(fence);
+
+		GEM_BUG_ON(fence->pin_count);
+		fence->pin_count++;
 	} else
 		return 0;
 
-	return fence_update(fence, set);
+	err = fence_update(fence, set);
+	if (err)
+		goto out_unpin;
+
+	GEM_BUG_ON(fence->vma != set);
+	GEM_BUG_ON(vma->fence != (set ? fence : NULL));
+
+	if (set)
+		return 0;
+
+out_unpin:
+	fence->pin_count--;
+	return err;
+}
+
+/**
+ * i915_reserve_fence - Reserve a fence for vGPU
+ * @dev_priv: i915 device private
+ *
+ * This function walks the fence regs looking for a free one and remove
+ * it from the fence_list. It is used to reserve fence for vGPU to use.
+ */
+struct drm_i915_fence_reg *
+i915_reserve_fence(struct drm_i915_private *dev_priv)
+{
+	struct drm_i915_fence_reg *fence;
+	int count;
+	int ret;
+
+	lockdep_assert_held(&dev_priv->drm.struct_mutex);
+
+	/* Keep at least one fence available for the display engine. */
+	count = 0;
+	list_for_each_entry(fence, &dev_priv->mm.fence_list, link)
+		count += !fence->pin_count;
+	if (count <= 1)
+		return ERR_PTR(-ENOSPC);
+
+	fence = fence_find(dev_priv);
+	if (IS_ERR(fence))
+		return fence;
+
+	if (fence->vma) {
+		/* Force-remove fence from VMA */
+		ret = fence_update(fence, NULL);
+		if (ret)
+			return ERR_PTR(ret);
+	}
+
+	list_del(&fence->link);
+	return fence;
+}
+
+/**
+ * i915_unreserve_fence - Reclaim a reserved fence
+ * @fence: the fence reg
+ *
+ * This function add a reserved fence register from vGPU to the fence_list.
+ */
+void i915_unreserve_fence(struct drm_i915_fence_reg *fence)
+{
+	lockdep_assert_held(&fence->i915->drm.struct_mutex);
+
+	list_add(&fence->link, &fence->i915->mm.fence_list);
 }
 
 /**
@@ -378,8 +454,10 @@ void i915_gem_revoke_fences(struct drm_i915_private *dev_priv)
 	for (i = 0; i < dev_priv->num_fence_regs; i++) {
 		struct drm_i915_fence_reg *fence = &dev_priv->fence_regs[i];
 
+		GEM_BUG_ON(fence->vma && fence->vma->fence != fence);
+
 		if (fence->vma)
-			i915_gem_release_mmap(fence->vma->obj);
+			i915_vma_revoke_mmap(fence->vma);
 	}
 }
 
@@ -399,13 +477,15 @@ void i915_gem_restore_fences(struct drm_i915_private *dev_priv)
 		struct drm_i915_fence_reg *reg = &dev_priv->fence_regs[i];
 		struct i915_vma *vma = reg->vma;
 
+		GEM_BUG_ON(vma && vma->fence != reg);
+
 		/*
 		 * Commit delayed tiling changes if we have an object still
 		 * attached to the fence, otherwise just clear the fence.
 		 */
 		if (vma && !i915_gem_object_is_tiled(vma->obj)) {
 			GEM_BUG_ON(!reg->dirty);
-			GEM_BUG_ON(!list_empty(&vma->obj->userfault_link));
+			GEM_BUG_ON(i915_vma_has_userfault(vma));
 
 			list_move(&reg->link, &dev_priv->mm.fence_list);
 			vma->fence = NULL;
@@ -475,8 +555,8 @@ void i915_gem_restore_fences(struct drm_i915_private *dev_priv)
 void
 i915_gem_detect_bit_6_swizzle(struct drm_i915_private *dev_priv)
 {
-	uint32_t swizzle_x = I915_BIT_6_SWIZZLE_UNKNOWN;
-	uint32_t swizzle_y = I915_BIT_6_SWIZZLE_UNKNOWN;
+	u32 swizzle_x = I915_BIT_6_SWIZZLE_UNKNOWN;
+	u32 swizzle_y = I915_BIT_6_SWIZZLE_UNKNOWN;
 
 	if (INTEL_GEN(dev_priv) >= 8 || IS_VALLEYVIEW(dev_priv)) {
 		/*
@@ -499,7 +579,7 @@ i915_gem_detect_bit_6_swizzle(struct drm_i915_private *dev_priv)
 				swizzle_y = I915_BIT_6_SWIZZLE_NONE;
 			}
 		} else {
-			uint32_t dimm_c0, dimm_c1;
+			u32 dimm_c0, dimm_c1;
 			dimm_c0 = I915_READ(MAD_DIMM_C0);
 			dimm_c1 = I915_READ(MAD_DIMM_C1);
 			dimm_c0 &= MAD_DIMM_A_SIZE_MASK | MAD_DIMM_B_SIZE_MASK;
@@ -517,13 +597,13 @@ i915_gem_detect_bit_6_swizzle(struct drm_i915_private *dev_priv)
 				swizzle_y = I915_BIT_6_SWIZZLE_NONE;
 			}
 		}
-	} else if (IS_GEN5(dev_priv)) {
+	} else if (IS_GEN(dev_priv, 5)) {
 		/* On Ironlake whatever DRAM config, GPU always do
 		 * same swizzling setup.
 		 */
 		swizzle_x = I915_BIT_6_SWIZZLE_9_10;
 		swizzle_y = I915_BIT_6_SWIZZLE_9;
-	} else if (IS_GEN2(dev_priv)) {
+	} else if (IS_GEN(dev_priv, 2)) {
 		/* As far as we know, the 865 doesn't have these bit 6
 		 * swizzling issues.
 		 */
@@ -531,7 +611,7 @@ i915_gem_detect_bit_6_swizzle(struct drm_i915_private *dev_priv)
 		swizzle_y = I915_BIT_6_SWIZZLE_NONE;
 	} else if (IS_MOBILE(dev_priv) ||
 		   IS_I915G(dev_priv) || IS_I945G(dev_priv)) {
-		uint32_t dcc;
+		u32 dcc;
 
 		/* On 9xx chipsets, channel interleave by the CPU is
 		 * determined by DCC.  For single-channel, neither the CPU
@@ -568,7 +648,7 @@ i915_gem_detect_bit_6_swizzle(struct drm_i915_private *dev_priv)
 		}
 
 		/* check for L-shaped memory aka modified enhanced addressing */
-		if (IS_GEN4(dev_priv) &&
+		if (IS_GEN(dev_priv, 4) &&
 		    !(I915_READ(DCC2) & DCC2_MODIFIED_ENHANCED_DISABLE)) {
 			swizzle_x = I915_BIT_6_SWIZZLE_UNKNOWN;
 			swizzle_y = I915_BIT_6_SWIZZLE_UNKNOWN;

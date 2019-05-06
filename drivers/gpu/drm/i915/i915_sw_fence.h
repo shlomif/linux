@@ -1,10 +1,9 @@
 /*
+ * SPDX-License-Identifier: MIT
+ *
  * i915_sw_fence.h - library routines for N:M synchronisation points
  *
  * Copyright (C) 2016 Intel Corporation
- *
- * This file is released under the GPLv2.
- *
  */
 
 #ifndef _I915_SW_FENCE_H_
@@ -23,7 +22,6 @@ struct reservation_object;
 struct i915_sw_fence {
 	wait_queue_head_t wait;
 	unsigned long flags;
-	struct kref kref;
 	atomic_t pending;
 };
 
@@ -66,7 +64,7 @@ void i915_sw_fence_commit(struct i915_sw_fence *fence);
 
 int i915_sw_fence_await_sw_fence(struct i915_sw_fence *fence,
 				 struct i915_sw_fence *after,
-				 wait_queue_t *wq);
+				 wait_queue_entry_t *wq);
 int i915_sw_fence_await_sw_fence_gfp(struct i915_sw_fence *fence,
 				     struct i915_sw_fence *after,
 				     gfp_t gfp);

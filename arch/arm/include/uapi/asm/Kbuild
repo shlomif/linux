@@ -1,6 +1,6 @@
-# UAPI Header export list
-include include/uapi/asm-generic/Kbuild.asm
+# SPDX-License-Identifier: GPL-2.0
 
-genhdr-y += unistd-common.h
-genhdr-y += unistd-oabi.h
-genhdr-y += unistd-eabi.h
+generated-y += unistd-common.h
+generated-y += unistd-oabi.h
+generated-y += unistd-eabi.h
+generic-y += kvm_para.h

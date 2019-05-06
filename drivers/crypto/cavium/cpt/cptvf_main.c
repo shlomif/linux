@@ -236,9 +236,10 @@ static int alloc_command_queues(struct cpt_vf *cptvf,
 
 			c_size = (rem_q_size > qcsize_bytes) ? qcsize_bytes :
 					rem_q_size;
-			curr->head = (u8 *)dma_zalloc_coherent(&pdev->dev,
-					  c_size + CPT_NEXT_CHUNK_PTR_SIZE,
-					  &curr->dma_addr, GFP_KERNEL);
+			curr->head = (u8 *)dma_alloc_coherent(&pdev->dev,
+							      c_size + CPT_NEXT_CHUNK_PTR_SIZE,
+							      &curr->dma_addr,
+							      GFP_KERNEL);
 			if (!curr->head) {
 				dev_err(&pdev->dev, "Command Q (%d) chunk (%d) allocation failed\n",
 					i, queue->nchunks);
@@ -525,7 +526,7 @@ static irqreturn_t cptvf_misc_intr_handler(int irq, void *cptvf_irq)
 	intr = cptvf_read_vf_misc_intr_status(cptvf);
 	/*Check for MISC interrupt types*/
 	if (likely(intr & CPT_VF_INTR_MBOX_MASK)) {
-		dev_err(&pdev->dev, "Mailbox interrupt 0x%llx on CPT VF %d\n",
+		dev_dbg(&pdev->dev, "Mailbox interrupt 0x%llx on CPT VF %d\n",
 			intr, cptvf->vfid);
 		cptvf_handle_mbox_intr(cptvf);
 		cptvf_clear_mbox_intr(cptvf);

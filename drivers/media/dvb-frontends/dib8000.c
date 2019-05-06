@@ -16,9 +16,9 @@
 #include <linux/mutex.h>
 #include <asm/div64.h>
 
-#include "dvb_math.h"
+#include <media/dvb_math.h>
 
-#include "dvb_frontend.h"
+#include <media/dvb_frontend.h>
 
 #include "dib8000.h"
 
@@ -564,7 +564,7 @@ static int dib8000_set_adc_state(struct dib8000_state *state, enum dibx000_adc_s
 			dib8000_write_word(state, 1925, reg |
 					(1<<4) | (1<<2));
 
-			/* read acces to make it works... strange ... */
+			/* read access to make it works... strange ... */
 			reg = dib8000_read_word(state, 1925);
 			msleep(20);
 			/* en_slowAdc = 1 & reset_sladc = 0 */
@@ -1091,7 +1091,7 @@ static int dib8000_reset(struct dvb_frontend *fe)
 
 	if ((state->revision != 0x8090) &&
 			(dib8000_set_output_mode(fe, OUTMODE_HIGH_Z) != 0))
-		dprintk("OUTPUT_MODE could not be resetted.\n");
+		dprintk("OUTPUT_MODE could not be reset.\n");
 
 	state->current_agc = NULL;
 
@@ -1867,7 +1867,7 @@ static int dib8096p_tuner_xfer(struct i2c_adapter *i2c_adap,
 			}
 	}
 
-	if (apb_address != 0) /* R/W acces via APB */
+	if (apb_address != 0) /* R/W access via APB */
 		return dib8096p_rw_on_apb(i2c_adap, msg, num, apb_address);
 	else  /* R/W access via SERPAR  */
 		return dib8096p_tuner_rw_serpar(i2c_adap, msg, num);
@@ -1880,7 +1880,7 @@ static u32 dib8096p_i2c_func(struct i2c_adapter *adapter)
 	return I2C_FUNC_I2C;
 }
 
-static struct i2c_algorithm dib8096p_tuner_xfer_algo = {
+static const struct i2c_algorithm dib8096p_tuner_xfer_algo = {
 	.master_xfer = dib8096p_tuner_xfer,
 	.functionality = dib8096p_i2c_func,
 };
@@ -2677,7 +2677,7 @@ static void dib8000_viterbi_state(struct dib8000_state *state, u8 onoff)
 static void dib8000_set_dds(struct dib8000_state *state, s32 offset_khz)
 {
 	s16 unit_khz_dds_val;
-	u32 abs_offset_khz = ABS(offset_khz);
+	u32 abs_offset_khz = abs(offset_khz);
 	u32 dds = state->cfg.pll->ifreq & 0x1ffffff;
 	u8 invert = !!(state->cfg.pll->ifreq & (1 << 25));
 	u8 ratio;
@@ -3082,7 +3082,7 @@ static int dib8000_tune(struct dvb_frontend *fe)
 			state->autosearch_state = AS_DONE;
 			*tune_state = CT_DEMOD_STOP; /* else we are done here */
 			break;
-		case 2: /* Succes */
+		case 2: /* Success */
 			state->status = FE_STATUS_FFT_SUCCESS; /* signal to the upper layer, that there was a channel found and the parameters can be read */
 			*tune_state = CT_DEMOD_STEP_3;
 			if (state->autosearch_state == AS_SEARCHING_GUARD)
@@ -3193,10 +3193,10 @@ static int dib8000_tune(struct dvb_frontend *fe)
 
 	case CT_DEMOD_STEP_6: /* (36)  if there is an input (diversity) */
 		if ((state->fe[1] != NULL) && (state->output_mode != OUTMODE_DIVERSITY)) {
-			/* if there is a diversity fe in input and this fe is has not already failled : wait here until this this fe has succedeed or failled */
+			/* if there is a diversity fe in input and this fe is has not already failed : wait here until this this fe has succedeed or failed */
 			if (dib8000_get_status(state->fe[1]) <= FE_STATUS_STD_SUCCESS) /* Something is locked on the input fe */
 				*tune_state = CT_DEMOD_STEP_8; /* go for mpeg */
-			else if (dib8000_get_status(state->fe[1]) >= FE_STATUS_TUNE_TIME_TOO_SHORT) { /* fe in input failled also, break the current one */
+			else if (dib8000_get_status(state->fe[1]) >= FE_STATUS_TUNE_TIME_TOO_SHORT) { /* fe in input failed also, break the current one */
 				*tune_state = CT_DEMOD_STOP; /* else we are done here ; step 8 will close the loops and exit */
 				dib8000_viterbi_state(state, 1); /* start viterbi chandec */
 				dib8000_set_isdbt_loop_params(state, LOOP_TUNE_2);
@@ -4255,23 +4255,6 @@ static int dib8000_set_slave_frontend(struct dvb_frontend *fe, struct dvb_fronte
 	return -ENOMEM;
 }
 
-static int dib8000_remove_slave_frontend(struct dvb_frontend *fe)
-{
-	struct dib8000_state *state = fe->demodulator_priv;
-	u8 index_frontend = 1;
-
-	while ((index_frontend < MAX_NUMBER_OF_FRONTENDS) && (state->fe[index_frontend] != NULL))
-		index_frontend++;
-	if (index_frontend != 1) {
-		dprintk("remove slave fe %p (index %i)\n", state->fe[index_frontend-1], index_frontend-1);
-		state->fe[index_frontend] = NULL;
-		return 0;
-	}
-
-	dprintk("no frontend to be removed\n");
-	return -ENODEV;
-}
-
 static struct dvb_frontend *dib8000_get_slave_frontend(struct dvb_frontend *fe, int slave_index)
 {
 	struct dib8000_state *state = fe->demodulator_priv;
@@ -4288,12 +4271,12 @@ static int dib8000_i2c_enumeration(struct i2c_adapter *host, int no_of_demods,
 	u8 new_addr = 0;
 	struct i2c_device client = {.adap = host };
 
-	client.i2c_write_buffer = kzalloc(4 * sizeof(u8), GFP_KERNEL);
+	client.i2c_write_buffer = kzalloc(4, GFP_KERNEL);
 	if (!client.i2c_write_buffer) {
 		dprintk("%s: not enough memory\n", __func__);
 		return -ENOMEM;
 	}
-	client.i2c_read_buffer = kzalloc(4 * sizeof(u8), GFP_KERNEL);
+	client.i2c_read_buffer = kzalloc(4, GFP_KERNEL);
 	if (!client.i2c_read_buffer) {
 		dprintk("%s: not enough memory\n", __func__);
 		ret = -ENOMEM;
@@ -4407,9 +4390,9 @@ static const struct dvb_frontend_ops dib8000_ops = {
 	.delsys = { SYS_ISDBT },
 	.info = {
 		 .name = "DiBcom 8000 ISDB-T",
-		 .frequency_min = 44250000,
-		 .frequency_max = 867250000,
-		 .frequency_stepsize = 62500,
+		 .frequency_min_hz =  44250 * kHz,
+		 .frequency_max_hz = 867250 * kHz,
+		 .frequency_stepsize_hz = 62500,
 		 .caps = FE_CAN_INVERSION_AUTO |
 		 FE_CAN_FEC_1_2 | FE_CAN_FEC_2_3 | FE_CAN_FEC_3_4 |
 		 FE_CAN_FEC_5_6 | FE_CAN_FEC_7_8 | FE_CAN_FEC_AUTO |
@@ -4506,7 +4489,6 @@ void *dib8000_attach(struct dib8000_ops *ops)
 	ops->get_slave_frontend = dib8000_get_slave_frontend;
 	ops->set_tune_state = dib8000_set_tune_state;
 	ops->pid_filter_ctrl = dib8000_pid_filter_ctrl;
-	ops->remove_slave_frontend = dib8000_remove_slave_frontend;
 	ops->get_adc_power = dib8000_get_adc_power;
 	ops->update_pll = dib8000_update_pll;
 	ops->tuner_sleep = dib8096p_tuner_sleep;

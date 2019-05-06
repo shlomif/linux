@@ -284,13 +284,11 @@ static int dnet_mii_probe(struct net_device *dev)
 
 	/* mask with MAC supported features */
 	if (bp->capabilities & DNET_HAS_GIGABIT)
-		phydev->supported &= PHY_GBIT_FEATURES;
+		phy_set_max_speed(phydev, SPEED_1000);
 	else
-		phydev->supported &= PHY_BASIC_FEATURES;
+		phy_set_max_speed(phydev, SPEED_100);
 
-	phydev->supported |= SUPPORTED_Asym_Pause | SUPPORTED_Pause;
-
-	phydev->advertising = phydev->supported;
+	phy_support_asym_pause(phydev);
 
 	bp->link = 0;
 	bp->speed = 0;
@@ -399,7 +397,7 @@ static int dnet_poll(struct napi_struct *napi, int budget)
 			 * 'skb_put()' points to the start of sk_buff
 			 * data area.
 			 */
-			data_ptr = (unsigned int *)skb_put(skb, pkt_len);
+			data_ptr = skb_put(skb, pkt_len);
 			for (i = 0; i < (pkt_len + 3) >> 2; i++)
 				*data_ptr++ = dnet_readl(bp, RX_DATA_FIFO);
 			skb->protocol = eth_type_trans(skb, dev);

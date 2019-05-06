@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-2.0
 # List of files in the vdso, has to be asm only for now
 
 obj-vdso64 = sigtramp.o gettimeofday.o datapage.o cacheflush.o note.o getcpu.o
@@ -8,6 +9,7 @@ targets := $(obj-vdso64) vdso64.so vdso64.so.dbg
 obj-vdso64 := $(addprefix $(obj)/, $(obj-vdso64))
 
 GCOV_PROFILE := n
+KCOV_INSTRUMENT := n
 UBSAN_SANITIZE := n
 
 ccflags-y := -shared -fno-common -fno-builtin

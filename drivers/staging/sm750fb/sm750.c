@@ -33,7 +33,7 @@ static int g_hwcursor = 1;
 static int g_noaccel;
 static int g_nomtrr;
 static const char *g_fbmode[] = {NULL, NULL};
-static const char *g_def_fbmode = "800x600-16@60";
+static const char *g_def_fbmode = "1024x768-32@60";
 static char *g_settings;
 static int g_dualview;
 static char *g_option;
@@ -112,42 +112,42 @@ static int lynxfb_ops_cursor(struct fb_info *info, struct fb_cursor *fbcursor)
 	cursor = &crtc->cursor;
 
 	if (fbcursor->image.width > cursor->maxW ||
-	   fbcursor->image.height > cursor->maxH ||
-	   fbcursor->image.depth > 1) {
+	    fbcursor->image.height > cursor->maxH ||
+	    fbcursor->image.depth > 1) {
 		return -ENXIO;
 	}
 
 	sm750_hw_cursor_disable(cursor);
 	if (fbcursor->set & FB_CUR_SETSIZE)
 		sm750_hw_cursor_setSize(cursor,
-				  fbcursor->image.width,
-				  fbcursor->image.height);
+					fbcursor->image.width,
+					fbcursor->image.height);
 
 	if (fbcursor->set & FB_CUR_SETPOS)
 		sm750_hw_cursor_setPos(cursor,
-				 fbcursor->image.dx - info->var.xoffset,
-				 fbcursor->image.dy - info->var.yoffset);
+				       fbcursor->image.dx - info->var.xoffset,
+				       fbcursor->image.dy - info->var.yoffset);
 
 	if (fbcursor->set & FB_CUR_SETCMAP) {
 		/* get the 16bit color of kernel means */
 		u16 fg, bg;
 
 		fg = ((info->cmap.red[fbcursor->image.fg_color] & 0xf800)) |
-		      ((info->cmap.green[fbcursor->image.fg_color] & 0xfc00) >> 5) |
-		      ((info->cmap.blue[fbcursor->image.fg_color] & 0xf800) >> 11);
+		     ((info->cmap.green[fbcursor->image.fg_color] & 0xfc00) >> 5) |
+		     ((info->cmap.blue[fbcursor->image.fg_color] & 0xf800) >> 11);
 
 		bg = ((info->cmap.red[fbcursor->image.bg_color] & 0xf800)) |
-		      ((info->cmap.green[fbcursor->image.bg_color] & 0xfc00) >> 5) |
-		      ((info->cmap.blue[fbcursor->image.bg_color] & 0xf800) >> 11);
+		     ((info->cmap.green[fbcursor->image.bg_color] & 0xfc00) >> 5) |
+		     ((info->cmap.blue[fbcursor->image.bg_color] & 0xf800) >> 11);
 
 		sm750_hw_cursor_setColor(cursor, fg, bg);
 	}
 
 	if (fbcursor->set & (FB_CUR_SETSHAPE | FB_CUR_SETIMAGE)) {
 		sm750_hw_cursor_setData(cursor,
-				  fbcursor->rop,
-				  fbcursor->image.data,
-				  fbcursor->mask);
+					fbcursor->rop,
+					fbcursor->image.data,
+					fbcursor->mask);
 	}
 
 	if (fbcursor->enable)
@@ -183,19 +183,19 @@ static void lynxfb_ops_fillrect(struct fb_info *info,
 	rop = (region->rop != ROP_COPY) ? HW_ROP2_XOR : HW_ROP2_COPY;
 
 	/*
-	 * If not use spin_lock,system will die if user load driver
+	 * If not use spin_lock, system will die if user load driver
 	 * and immediately unload driver frequently (dual)
+	 * since they fb_count could change during the lifetime of
+	 * this lock, we are holding it for all cases.
 	 */
-	if (sm750_dev->fb_count > 1)
-		spin_lock(&sm750_dev->slock);
+	spin_lock(&sm750_dev->slock);
 
 	sm750_dev->accel.de_fillrect(&sm750_dev->accel,
 				     base, pitch, Bpp,
 				     region->dx, region->dy,
 				     region->width, region->height,
 				     color, rop);
-	if (sm750_dev->fb_count > 1)
-		spin_unlock(&sm750_dev->slock);
+	spin_unlock(&sm750_dev->slock);
 }
 
 static void lynxfb_ops_copyarea(struct fb_info *info,
@@ -219,17 +219,17 @@ static void lynxfb_ops_copyarea(struct fb_info *info,
 	/*
 	 * If not use spin_lock, system will die if user load driver
 	 * and immediately unload driver frequently (dual)
+	 * since they fb_count could change during the lifetime of
+	 * this lock, we are holding it for all cases.
 	 */
-	if (sm750_dev->fb_count > 1)
-		spin_lock(&sm750_dev->slock);
+	spin_lock(&sm750_dev->slock);
 
 	sm750_dev->accel.de_copyarea(&sm750_dev->accel,
 				     base, pitch, region->sx, region->sy,
 				     base, pitch, Bpp, region->dx, region->dy,
 				     region->width, region->height,
 				     HW_ROP2_COPY);
-	if (sm750_dev->fb_count > 1)
-		spin_unlock(&sm750_dev->slock);
+	spin_unlock(&sm750_dev->slock);
 }
 
 static void lynxfb_ops_imageblit(struct fb_info *info,
@@ -268,9 +268,10 @@ static void lynxfb_ops_imageblit(struct fb_info *info,
 	/*
 	 * If not use spin_lock, system will die if user load driver
 	 * and immediately unload driver frequently (dual)
+	 * since they fb_count could change during the lifetime of
+	 * this lock, we are holding it for all cases.
 	 */
-	if (sm750_dev->fb_count > 1)
-		spin_lock(&sm750_dev->slock);
+	spin_lock(&sm750_dev->slock);
 
 	sm750_dev->accel.de_imageblit(&sm750_dev->accel,
 				      image->data, image->width >> 3, 0,
@@ -278,8 +279,7 @@ static void lynxfb_ops_imageblit(struct fb_info *info,
 				      image->dx, image->dy,
 				      image->width, image->height,
 				      fgcol, bgcol, HW_ROP2_COPY);
-	if (sm750_dev->fb_count > 1)
-		spin_unlock(&sm750_dev->slock);
+	spin_unlock(&sm750_dev->slock);
 }
 
 static int lynxfb_ops_pan_display(struct fb_var_screeninfo *var,
@@ -512,12 +512,10 @@ static int lynxfb_ops_check_var(struct fb_var_screeninfo *var,
 {
 	struct lynxfb_par *par;
 	struct lynxfb_crtc *crtc;
-	struct lynxfb_output *output;
 	resource_size_t request;
 
 	par = info->par;
 	crtc = &par->crtc;
-	output = &par->output;
 
 	pr_debug("check var:%dx%d-%d\n",
 		 var->xres,
@@ -1009,7 +1007,7 @@ NO_PARAM:
 	}
 }
 
-static void sm750fb_frambuffer_release(struct sm750_dev *sm750_dev)
+static void sm750fb_framebuffer_release(struct sm750_dev *sm750_dev)
 {
 	struct fb_info *fb_info;
 
@@ -1021,7 +1019,7 @@ static void sm750fb_frambuffer_release(struct sm750_dev *sm750_dev)
 	}
 }
 
-static int sm750fb_frambuffer_alloc(struct sm750_dev *sm750_dev, int fbidx)
+static int sm750fb_framebuffer_alloc(struct sm750_dev *sm750_dev, int fbidx)
 {
 	struct fb_info *fb_info;
 	struct lynxfb_par *par;
@@ -1053,6 +1051,26 @@ release_fb:
 	return err;
 }
 
+static int lynxfb_kick_out_firmware_fb(struct pci_dev *pdev)
+{
+	struct apertures_struct *ap;
+	bool primary = false;
+
+	ap = alloc_apertures(1);
+	if (!ap)
+		return -ENOMEM;
+
+	ap->ranges[0].base = pci_resource_start(pdev, 0);
+	ap->ranges[0].size = pci_resource_len(pdev, 0);
+#ifdef CONFIG_X86
+	primary = pdev->resource[PCI_ROM_RESOURCE].flags &
+					IORESOURCE_ROM_SHADOW;
+#endif
+	remove_conflicting_framebuffers(ap, "sm750_fb1", primary);
+	kfree(ap);
+	return 0;
+}
+
 static int lynxfb_pci_probe(struct pci_dev *pdev,
 			    const struct pci_device_id *ent)
 {
@@ -1060,6 +1078,10 @@ static int lynxfb_pci_probe(struct pci_dev *pdev,
 	int max_fb;
 	int fbidx;
 	int err;
+
+	err = lynxfb_kick_out_firmware_fb(pdev);
+	if (err)
+		return err;
 
 	/* enable device */
 	err = pcim_enable_device(pdev);
@@ -1115,7 +1137,7 @@ static int lynxfb_pci_probe(struct pci_dev *pdev,
 	/* allocate frame buffer info structures according to g_dualview */
 	max_fb = g_dualview ? 2 : 1;
 	for (fbidx = 0; fbidx < max_fb; fbidx++) {
-		err = sm750fb_frambuffer_alloc(sm750_dev, fbidx);
+		err = sm750fb_framebuffer_alloc(sm750_dev, fbidx);
 		if (err)
 			goto release_fb;
 	}
@@ -1123,7 +1145,7 @@ static int lynxfb_pci_probe(struct pci_dev *pdev,
 	return 0;
 
 release_fb:
-	sm750fb_frambuffer_release(sm750_dev);
+	sm750fb_framebuffer_release(sm750_dev);
 	return err;
 }
 
@@ -1133,7 +1155,7 @@ static void lynxfb_pci_remove(struct pci_dev *pdev)
 
 	sm750_dev = pci_get_drvdata(pdev);
 
-	sm750fb_frambuffer_release(sm750_dev);
+	sm750fb_framebuffer_release(sm750_dev);
 	arch_phys_wc_del(sm750_dev->mtrr.vram);
 
 	iounmap(sm750_dev->pvReg);

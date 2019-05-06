@@ -122,37 +122,12 @@ int mtk_drm_gem_dumb_create(struct drm_file *file_priv, struct drm_device *dev,
 		goto err_handle_create;
 
 	/* drop reference from allocate - handle holds it now. */
-	drm_gem_object_unreference_unlocked(&mtk_gem->base);
+	drm_gem_object_put_unlocked(&mtk_gem->base);
 
 	return 0;
 
 err_handle_create:
 	mtk_drm_gem_free_object(&mtk_gem->base);
-	return ret;
-}
-
-int mtk_drm_gem_dumb_map_offset(struct drm_file *file_priv,
-				struct drm_device *dev, uint32_t handle,
-				uint64_t *offset)
-{
-	struct drm_gem_object *obj;
-	int ret;
-
-	obj = drm_gem_object_lookup(file_priv, handle);
-	if (!obj) {
-		DRM_ERROR("failed to lookup gem object.\n");
-		return -EINVAL;
-	}
-
-	ret = drm_gem_create_mmap_offset(obj);
-	if (ret)
-		goto out;
-
-	*offset = drm_vma_node_offset_addr(&obj->vma_node);
-	DRM_DEBUG_KMS("offset = 0x%llx\n", *offset);
-
-out:
-	drm_gem_object_unreference_unlocked(obj);
 	return ret;
 }
 
@@ -245,7 +220,7 @@ struct drm_gem_object *mtk_gem_prime_import_sg_table(struct drm_device *dev,
 	mtk_gem = mtk_drm_gem_init(dev, attach->dmabuf->size);
 
 	if (IS_ERR(mtk_gem))
-		return ERR_PTR(PTR_ERR(mtk_gem));
+		return ERR_CAST(mtk_gem);
 
 	expected = sg_dma_address(sg->sgl);
 	for_each_sg(sg->sgl, s, sg->nents, i) {
@@ -265,4 +240,50 @@ struct drm_gem_object *mtk_gem_prime_import_sg_table(struct drm_device *dev,
 err_gem_free:
 	kfree(mtk_gem);
 	return ERR_PTR(ret);
+}
+
+void *mtk_drm_gem_prime_vmap(struct drm_gem_object *obj)
+{
+	struct mtk_drm_gem_obj *mtk_gem = to_mtk_gem_obj(obj);
+	struct sg_table *sgt;
+	struct sg_page_iter iter;
+	unsigned int npages;
+	unsigned int i = 0;
+
+	if (mtk_gem->kvaddr)
+		return mtk_gem->kvaddr;
+
+	sgt = mtk_gem_prime_get_sg_table(obj);
+	if (IS_ERR(sgt))
+		return NULL;
+
+	npages = obj->size >> PAGE_SHIFT;
+	mtk_gem->pages = kcalloc(npages, sizeof(*mtk_gem->pages), GFP_KERNEL);
+	if (!mtk_gem->pages)
+		goto out;
+
+	for_each_sg_page(sgt->sgl, &iter, sgt->orig_nents, 0) {
+		mtk_gem->pages[i++] = sg_page_iter_page(&iter);
+		if (i > npages)
+			break;
+	}
+	mtk_gem->kvaddr = vmap(mtk_gem->pages, npages, VM_MAP,
+			       pgprot_writecombine(PAGE_KERNEL));
+
+out:
+	kfree((void *)sgt);
+
+	return mtk_gem->kvaddr;
+}
+
+void mtk_drm_gem_prime_vunmap(struct drm_gem_object *obj, void *vaddr)
+{
+	struct mtk_drm_gem_obj *mtk_gem = to_mtk_gem_obj(obj);
+
+	if (!mtk_gem->pages)
+		return;
+
+	vunmap(vaddr);
+	mtk_gem->kvaddr = 0;
+	kfree((void *)mtk_gem->pages);
 }

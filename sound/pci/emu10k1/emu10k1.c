@@ -37,7 +37,7 @@ MODULE_LICENSE("GPL");
 MODULE_SUPPORTED_DEVICE("{{Creative Labs,SB Live!/PCI512/E-mu APS},"
 	       "{Creative Labs,SB Audigy}}");
 
-#if IS_REACHABLE(CONFIG_SND_SEQUENCER)
+#if IS_ENABLED(CONFIG_SND_SEQUENCER)
 #define ENABLE_SYNTH
 #include <sound/emu10k1_synth.h>
 #endif
@@ -223,12 +223,6 @@ static int snd_emu10k1_suspend(struct device *dev)
 	emu->suspend = 1;
 
 	cancel_delayed_work_sync(&emu->emu1010.firmware_work);
-
-	snd_pcm_suspend_all(emu->pcm);
-	snd_pcm_suspend_all(emu->pcm_mic);
-	snd_pcm_suspend_all(emu->pcm_efx);
-	snd_pcm_suspend_all(emu->pcm_multi);
-	snd_pcm_suspend_all(emu->pcm_p16v);
 
 	snd_ac97_suspend(emu->ac97);
 

@@ -121,8 +121,8 @@ static int p54_assign_address(struct p54_common *priv, struct sk_buff *skb)
 	}
 	if (unlikely(!target_skb)) {
 		if (priv->rx_end - last_addr >= len) {
-			target_skb = priv->tx_queue.prev;
-			if (!skb_queue_empty(&priv->tx_queue)) {
+			target_skb = skb_peek_tail(&priv->tx_queue);
+			if (target_skb) {
 				info = IEEE80211_SKB_CB(target_skb);
 				range = (void *)info->rate_driver_data;
 				target_addr = range->end_addr;
@@ -815,8 +815,8 @@ void p54_tx_80211(struct ieee80211_hw *dev,
 		}
 	}
 
-	txhdr = (struct p54_tx_data *) skb_push(skb, sizeof(*txhdr) + padding);
-	hdr = (struct p54_hdr *) skb_push(skb, sizeof(*hdr));
+	txhdr = skb_push(skb, sizeof(*txhdr) + padding);
+	hdr = skb_push(skb, sizeof(*hdr));
 
 	if (padding)
 		hdr_flags |= P54_HDR_FLAG_DATA_ALIGN;
@@ -905,13 +905,13 @@ void p54_tx_80211(struct ieee80211_hw *dev,
 		if (info->control.hw_key->cipher == WLAN_CIPHER_SUITE_TKIP) {
 			/* reserve space for the MIC key */
 			len += 8;
-			memcpy(skb_put(skb, 8), &(info->control.hw_key->key
-				[NL80211_TKIP_DATA_OFFSET_TX_MIC_KEY]), 8);
+			skb_put_data(skb,
+				     &(info->control.hw_key->key[NL80211_TKIP_DATA_OFFSET_TX_MIC_KEY]),
+				     8);
 		}
 		/* reserve some space for ICV */
 		len += info->control.hw_key->icv_len;
-		memset(skb_put(skb, info->control.hw_key->icv_len), 0,
-		       info->control.hw_key->icv_len);
+		skb_put_zero(skb, info->control.hw_key->icv_len);
 	} else {
 		txhdr->key_type = 0;
 		txhdr->key_len = 0;

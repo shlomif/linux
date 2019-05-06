@@ -207,8 +207,7 @@ static int rt3883_pci_irq_init(struct device *dev,
 
 	irq = irq_of_parse_and_map(rpc->intc_of_node, 0);
 	if (irq == 0) {
-		dev_err(dev, "%s has no IRQ",
-			of_node_full_name(rpc->intc_of_node));
+		dev_err(dev, "%pOF has no IRQ", rpc->intc_of_node);
 		return -EINVAL;
 	}
 
@@ -438,24 +437,23 @@ static int rt3883_pci_probe(struct platform_device *pdev)
 	}
 
 	if (!rpc->intc_of_node) {
-		dev_err(dev, "%s has no %s child node",
-			of_node_full_name(rpc->intc_of_node),
+		dev_err(dev, "%pOF has no %s child node",
+			rpc->intc_of_node,
 			"interrupt controller");
 		return -EINVAL;
 	}
 
 	/* find the PCI host bridge child node */
 	for_each_child_of_node(np, child) {
-		if (child->type &&
-		    of_node_cmp(child->type, "pci") == 0) {
+		if (of_node_is_type(child, "pci")) {
 			rpc->pci_controller.of_node = child;
 			break;
 		}
 	}
 
 	if (!rpc->pci_controller.of_node) {
-		dev_err(dev, "%s has no %s child node",
-			of_node_full_name(rpc->intc_of_node),
+		dev_err(dev, "%pOF has no %s child node",
+			rpc->intc_of_node,
 			"PCI host bridge");
 		err = -EINVAL;
 		goto err_put_intc_node;
@@ -465,8 +463,7 @@ static int rt3883_pci_probe(struct platform_device *pdev)
 	for_each_available_child_of_node(rpc->pci_controller.of_node, child) {
 		int devfn;
 
-		if (!child->type ||
-		    of_node_cmp(child->type, "pci") != 0)
+		if (!of_node_is_type(child, "pci"))
 			continue;
 
 		devfn = of_pci_get_devfn(child);
@@ -565,7 +562,7 @@ err_put_intc_node:
 	return err;
 }
 
-int __init pcibios_map_irq(const struct pci_dev *dev, u8 slot, u8 pin)
+int pcibios_map_irq(const struct pci_dev *dev, u8 slot, u8 pin)
 {
 	return of_irq_parse_and_map_pci(dev, slot, pin);
 }

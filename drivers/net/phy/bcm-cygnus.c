@@ -1,14 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (C) 2015 Broadcom Corporation
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License as
- * published by the Free Software Foundation version 2.
- *
- * This program is distributed "as is" WITHOUT ANY WARRANTY of any
- * kind, whether express or implied; without even the implied warranty
- * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
  */
 
 /* Broadcom Cygnus SoC internal transceivers support. */
@@ -61,17 +53,17 @@ static int bcm_cygnus_afe_config(struct phy_device *phydev)
 		return rc;
 
 	/* make rcal=100, since rdb default is 000 */
-	rc = bcm_phy_write_exp(phydev, MII_BRCM_CORE_EXPB1, 0x10);
+	rc = bcm_phy_write_exp_sel(phydev, MII_BRCM_CORE_EXPB1, 0x10);
 	if (rc < 0)
 		return rc;
 
 	/* CORE_EXPB0, Reset R_CAL/RC_CAL Engine */
-	rc = bcm_phy_write_exp(phydev, MII_BRCM_CORE_EXPB0, 0x10);
+	rc = bcm_phy_write_exp_sel(phydev, MII_BRCM_CORE_EXPB0, 0x10);
 	if (rc < 0)
 		return rc;
 
 	/* CORE_EXPB0, Disable Reset R_CAL/RC_CAL Engine */
-	rc = bcm_phy_write_exp(phydev, MII_BRCM_CORE_EXPB0, 0x00);
+	rc = bcm_phy_write_exp_sel(phydev, MII_BRCM_CORE_EXPB0, 0x00);
 
 	return 0;
 }
@@ -136,8 +128,6 @@ static struct phy_driver bcm_cygnus_phy_driver[] = {
 	.name          = "Broadcom Cygnus PHY",
 	.features      = PHY_GBIT_FEATURES,
 	.config_init   = bcm_cygnus_config_init,
-	.config_aneg   = genphy_config_aneg,
-	.read_status   = genphy_read_status,
 	.ack_interrupt = bcm_phy_ack_intr,
 	.config_intr   = bcm_phy_config_intr,
 	.suspend       = genphy_suspend,

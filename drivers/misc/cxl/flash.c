@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 #include <linux/kernel.h>
 #include <linux/fs.h>
 #include <linux/semaphore.h>
@@ -91,8 +92,8 @@ static int update_property(struct device_node *dn, const char *name,
 
 	val = (u32 *)new_prop->value;
 	rc = cxl_update_properties(dn, new_prop);
-	pr_devel("%s: update property (%s, length: %i, value: %#x)\n",
-		  dn->name, name, vd, be32_to_cpu(*val));
+	pr_devel("%pOFn: update property (%s, length: %i, value: %#x)\n",
+		  dn, name, vd, be32_to_cpu(*val));
 
 	if (rc) {
 		kfree(new_prop->name);
@@ -401,8 +402,10 @@ static int device_open(struct inode *inode, struct file *file)
 	if (down_interruptible(&sem) != 0)
 		return -EPERM;
 
-	if (!(adapter = get_cxl_adapter(adapter_num)))
-		return -ENODEV;
+	if (!(adapter = get_cxl_adapter(adapter_num))) {
+		rc = -ENODEV;
+		goto err_unlock;
+	}
 
 	file->private_data = adapter;
 	continue_token = 0;
@@ -446,6 +449,8 @@ err1:
 		free_page((unsigned long) le);
 err:
 	put_device(&adapter->dev);
+err_unlock:
+	up(&sem);
 
 	return rc;
 }

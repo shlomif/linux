@@ -36,7 +36,6 @@
 #include <linux/of_irq.h>
 #include <linux/mfd/syscon.h>
 #include <linux/reset-controller.h>
-#include <linux/clk.h>
 
 #include "hi6210-i2s.h"
 
@@ -97,8 +96,8 @@ static inline u32 hi6210_read_reg(struct hi6210_i2s *i2s, int reg)
 	return readl(i2s->base + reg);
 }
 
-int hi6210_i2s_startup(struct snd_pcm_substream *substream,
-		     struct snd_soc_dai *cpu_dai)
+static int hi6210_i2s_startup(struct snd_pcm_substream *substream,
+			      struct snd_soc_dai *cpu_dai)
 {
 	struct hi6210_i2s *i2s = dev_get_drvdata(cpu_dai->dev);
 	int ret, n;
@@ -175,8 +174,9 @@ int hi6210_i2s_startup(struct snd_pcm_substream *substream,
 
 	return 0;
 }
-void hi6210_i2s_shutdown(struct snd_pcm_substream *substream,
-		       struct snd_soc_dai *cpu_dai)
+
+static void hi6210_i2s_shutdown(struct snd_pcm_substream *substream,
+				struct snd_soc_dai *cpu_dai)
 {
 	struct hi6210_i2s *i2s = dev_get_drvdata(cpu_dai->dev);
 	int n;
@@ -269,13 +269,13 @@ static int hi6210_i2s_hw_params(struct snd_pcm_substream *substream,
 	switch (params_format(params)) {
 	case SNDRV_PCM_FORMAT_U16_LE:
 		signed_data = HII2S_I2S_CFG__S2_CODEC_DATA_FORMAT;
-		/* fallthru */
+		/* fall through */
 	case SNDRV_PCM_FORMAT_S16_LE:
 		bits = HII2S_BITS_16;
 		break;
 	case SNDRV_PCM_FORMAT_U24_LE:
 		signed_data = HII2S_I2S_CFG__S2_CODEC_DATA_FORMAT;
-		/* fallthru */
+		/* fall through */
 	case SNDRV_PCM_FORMAT_S24_LE:
 		bits = HII2S_BITS_24;
 		break;
@@ -498,7 +498,7 @@ static int hi6210_i2s_trigger(struct snd_pcm_substream *substream, int cmd,
 			hi6210_i2s_txctrl(cpu_dai, 0);
 		break;
 	default:
-		dev_err(cpu_dai->dev, "uknown cmd\n");
+		dev_err(cpu_dai->dev, "unknown cmd\n");
 		return -EINVAL;
 	}
 	return 0;
@@ -516,7 +516,7 @@ static int hi6210_i2s_dai_probe(struct snd_soc_dai *dai)
 }
 
 
-static struct snd_soc_dai_ops hi6210_i2s_dai_ops = {
+static const struct snd_soc_dai_ops hi6210_i2s_dai_ops = {
 	.trigger	= hi6210_i2s_trigger,
 	.hw_params	= hi6210_i2s_hw_params,
 	.set_fmt	= hi6210_i2s_set_fmt,
@@ -524,7 +524,7 @@ static struct snd_soc_dai_ops hi6210_i2s_dai_ops = {
 	.shutdown	= hi6210_i2s_shutdown,
 };
 
-struct snd_soc_dai_driver hi6210_i2s_dai_init = {
+static const struct snd_soc_dai_driver hi6210_i2s_dai_init = {
 	.probe		= hi6210_i2s_dai_probe,
 	.playback = {
 		.channels_min = 2,

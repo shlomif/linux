@@ -369,7 +369,7 @@ static int snd_es18xx_reset_fifo(struct snd_es18xx *chip)
 	return 0;
 }
 
-static struct snd_ratnum new_clocks[2] = {
+static const struct snd_ratnum new_clocks[2] = {
 	{
 		.num = 793800,
 		.den_min = 1,
@@ -384,12 +384,12 @@ static struct snd_ratnum new_clocks[2] = {
 	}
 };
 
-static struct snd_pcm_hw_constraint_ratnums new_hw_constraints_clocks = {
+static const struct snd_pcm_hw_constraint_ratnums new_hw_constraints_clocks = {
 	.nrats = 2,
 	.rats = new_clocks,
 };
 
-static struct snd_ratnum old_clocks[2] = {
+static const struct snd_ratnum old_clocks[2] = {
 	{
 		.num = 795444,
 		.den_min = 1,
@@ -404,7 +404,7 @@ static struct snd_ratnum old_clocks[2] = {
 	}
 };
 
-static struct snd_pcm_hw_constraint_ratnums old_hw_constraints_clocks  = {
+static const struct snd_pcm_hw_constraint_ratnums old_hw_constraints_clocks  = {
 	.nrats = 2,
 	.rats = old_clocks,
 };
@@ -838,7 +838,7 @@ static snd_pcm_uframes_t snd_es18xx_capture_pointer(struct snd_pcm_substream *su
 	return pos >> chip->dma1_shift;
 }
 
-static struct snd_pcm_hardware snd_es18xx_playback =
+static const struct snd_pcm_hardware snd_es18xx_playback =
 {
 	.info =			(SNDRV_PCM_INFO_MMAP | SNDRV_PCM_INFO_INTERLEAVED |
 				 SNDRV_PCM_INFO_RESUME |
@@ -858,7 +858,7 @@ static struct snd_pcm_hardware snd_es18xx_playback =
 	.fifo_size =		0,
 };
 
-static struct snd_pcm_hardware snd_es18xx_capture =
+static const struct snd_pcm_hardware snd_es18xx_capture =
 {
 	.info =			(SNDRV_PCM_INFO_MMAP | SNDRV_PCM_INFO_INTERLEAVED |
 				 SNDRV_PCM_INFO_RESUME |
@@ -1024,6 +1024,7 @@ static int snd_es18xx_put_mux(struct snd_kcontrol *kcontrol, struct snd_ctl_elem
 			val = 3;
 		} else
 			retVal = snd_es18xx_mixer_bits(chip, 0x7a, 0x08, 0x00) != 0x00;
+		/* fall through */
  /* 4 source chips */
 	case 0x1868:
 	case 0x1878:
@@ -1665,7 +1666,7 @@ static int snd_es18xx_probe(struct snd_es18xx *chip,
 	return snd_es18xx_initialize(chip, mpu_port, fm_port);
 }
 
-static struct snd_pcm_ops snd_es18xx_playback_ops = {
+static const struct snd_pcm_ops snd_es18xx_playback_ops = {
 	.open =		snd_es18xx_playback_open,
 	.close =	snd_es18xx_playback_close,
 	.ioctl =	snd_pcm_lib_ioctl,
@@ -1676,7 +1677,7 @@ static struct snd_pcm_ops snd_es18xx_playback_ops = {
 	.pointer =	snd_es18xx_playback_pointer,
 };
 
-static struct snd_pcm_ops snd_es18xx_capture_ops = {
+static const struct snd_pcm_ops snd_es18xx_capture_ops = {
 	.open =		snd_es18xx_capture_open,
 	.close =	snd_es18xx_capture_close,
 	.ioctl =	snd_pcm_lib_ioctl,
@@ -1716,7 +1717,7 @@ static int snd_es18xx_pcm(struct snd_card *card, int device)
         chip->pcm = pcm;
 
 	snd_pcm_lib_preallocate_pages_for_all(pcm, SNDRV_DMA_TYPE_DEV,
-					      snd_dma_isa_data(),
+					      card->dev,
 					      64*1024,
 					      chip->dma1 > 3 || chip->dma2 > 3 ? 128*1024 : 64*1024);
 	return 0;
@@ -1729,8 +1730,6 @@ static int snd_es18xx_suspend(struct snd_card *card, pm_message_t state)
 	struct snd_es18xx *chip = card->private_data;
 
 	snd_power_change_state(card, SNDRV_CTL_POWER_D3hot);
-
-	snd_pcm_suspend_all(chip->pcm);
 
 	/* power down */
 	chip->pm_reg = (unsigned char)snd_es18xx_read(chip, ES18XX_PM);
@@ -2017,7 +2016,7 @@ static int isa_registered;
 static int pnp_registered;
 static int pnpc_registered;
 
-static struct pnp_device_id snd_audiodrive_pnpbiosids[] = {
+static const struct pnp_device_id snd_audiodrive_pnpbiosids[] = {
 	{ .id = "ESS1869" },
 	{ .id = "ESS1879" },
 	{ .id = "" }		/* end */
@@ -2062,7 +2061,7 @@ static int snd_audiodrive_pnp(int dev, struct snd_es18xx *chip,
 	return 0;
 }
 
-static struct pnp_card_device_id snd_audiodrive_pnpids[] = {
+static const struct pnp_card_device_id snd_audiodrive_pnpids[] = {
 	/* ESS 1868 (integrated on Compaq dual P-Pro motherboard and Genius 18PnP 3D) */
 	{ .id = "ESS1868", .devs = { { "ESS1868" }, { "ESS0000" } } },
 	/* ESS 1868 (integrated on Maxisound Cards) */

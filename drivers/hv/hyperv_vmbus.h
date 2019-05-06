@@ -27,9 +27,12 @@
 
 #include <linux/list.h>
 #include <asm/sync_bitops.h>
+#include <asm/hyperv-tlfs.h>
 #include <linux/atomic.h>
 #include <linux/hyperv.h>
 #include <linux/interrupt.h>
+
+#include "hv_trace.h"
 
 /*
  * Timeout for services such as KVP and fcopy.
@@ -41,72 +44,6 @@
  */
 #define HV_UTIL_NEGO_TIMEOUT 55
 
-/* Define synthetic interrupt controller flag constants. */
-#define HV_EVENT_FLAGS_COUNT		(256 * 8)
-#define HV_EVENT_FLAGS_LONG_COUNT	(256 / sizeof(unsigned long))
-
-/*
- * Timer configuration register.
- */
-union hv_timer_config {
-	u64 as_uint64;
-	struct {
-		u64 enable:1;
-		u64 periodic:1;
-		u64 lazy:1;
-		u64 auto_enable:1;
-		u64 reserved_z0:12;
-		u64 sintx:4;
-		u64 reserved_z1:44;
-	};
-};
-
-
-/* Define the synthetic interrupt controller event flags format. */
-union hv_synic_event_flags {
-	unsigned long flags[HV_EVENT_FLAGS_LONG_COUNT];
-};
-
-/* Define SynIC control register. */
-union hv_synic_scontrol {
-	u64 as_uint64;
-	struct {
-		u64 enable:1;
-		u64 reserved:63;
-	};
-};
-
-/* Define synthetic interrupt source. */
-union hv_synic_sint {
-	u64 as_uint64;
-	struct {
-		u64 vector:8;
-		u64 reserved1:8;
-		u64 masked:1;
-		u64 auto_eoi:1;
-		u64 reserved2:46;
-	};
-};
-
-/* Define the format of the SIMP register */
-union hv_synic_simp {
-	u64 as_uint64;
-	struct {
-		u64 simp_enabled:1;
-		u64 preserved:11;
-		u64 base_simp_gpa:52;
-	};
-};
-
-/* Define the format of the SIEFP register */
-union hv_synic_siefp {
-	u64 as_uint64;
-	struct {
-		u64 siefp_enabled:1;
-		u64 preserved:11;
-		u64 base_siefp_gpa:52;
-	};
-};
 
 /* Definitions for the monitored notification facility */
 union hv_monitor_trigger_group {
@@ -182,6 +119,7 @@ struct hv_input_post_message {
 
 enum {
 	VMBUS_MESSAGE_CONNECTION_ID	= 1,
+	VMBUS_MESSAGE_CONNECTION_ID_4	= 4,
 	VMBUS_MESSAGE_PORT_ID		= 1,
 	VMBUS_EVENT_CONNECTION_ID	= 2,
 	VMBUS_EVENT_PORT_ID		= 2,
@@ -224,20 +162,7 @@ struct hv_context {
 
 	void *tsc_page;
 
-	bool synic_initialized;
-
 	struct hv_per_cpu_context __percpu *cpu_context;
-
-	/*
-	 * Hypervisor's notion of virtual processor ID is different from
-	 * Linux' notion of CPU ID. This information can only be retrieved
-	 * in the context of the calling CPU. Setup a map for easy access
-	 * to this information:
-	 *
-	 * vp_index[a] is the Hyper-V's processor ID corresponding to
-	 * Linux cpuid 'a'.
-	 */
-	u32 vp_index[NR_CPUS];
 
 	/*
 	 * To manage allocations in a NUMA node.
@@ -303,6 +228,15 @@ enum vmbus_connect_state {
 #define MAX_SIZE_CHANNEL_MESSAGE	HV_MESSAGE_PAYLOAD_BYTE_COUNT
 
 struct vmbus_connection {
+	/*
+	 * CPU on which the initial host contact was made.
+	 */
+	int connect_cpu;
+
+	u32 msg_conn_id;
+
+	atomic_t offer_in_progress;
+
 	enum vmbus_connect_state conn_state;
 
 	atomic_t next_gpadl_handle;
@@ -331,7 +265,14 @@ struct vmbus_connection {
 	struct list_head chn_list;
 	struct mutex channel_mutex;
 
+	/*
+	 * An offer message is handled first on the work_queue, and then
+	 * is further handled on handle_primary_chan_wq or
+	 * handle_sub_chan_wq.
+	 */
 	struct workqueue_struct *work_queue;
+	struct workqueue_struct *handle_primary_chan_wq;
+	struct workqueue_struct *handle_sub_chan_wq;
 };
 
 
@@ -371,12 +312,14 @@ extern const struct vmbus_channel_message_table_entry
 
 /* General vmbus interface */
 
-struct hv_device *vmbus_device_create(const uuid_le *type,
-				      const uuid_le *instance,
+struct hv_device *vmbus_device_create(const guid_t *type,
+				      const guid_t *instance,
 				      struct vmbus_channel *channel);
 
 int vmbus_device_register(struct hv_device *child_device_obj);
 void vmbus_device_unregister(struct hv_device *device_obj);
+int vmbus_add_channel_kobj(struct hv_device *device_obj,
+			   struct vmbus_channel *channel);
 
 struct vmbus_channel *relid2channel(u32 relid);
 
@@ -411,6 +354,10 @@ static inline void hv_poll_channel(struct vmbus_channel *channel,
 	if (!channel)
 		return;
 
+	if (in_interrupt() && (channel->target_cpu == smp_processor_id())) {
+		cb(channel);
+		return;
+	}
 	smp_call_function_single(channel->target_cpu, cb, channel, true);
 }
 

@@ -208,7 +208,7 @@ static void clk_ether_unprepare(struct clk_hw *hw)
 	writel_relaxed(val, clk->ctrl_reg);
 }
 
-static struct clk_ops clk_ether_ops = {
+static const struct clk_ops clk_ether_ops = {
 	.prepare = clk_ether_prepare,
 	.unprepare = clk_ether_unprepare,
 };
@@ -247,7 +247,7 @@ static void clk_complex_disable(struct clk_hw *hw)
 	writel_relaxed(val, clk->phy_reg);
 }
 
-static struct clk_ops clk_complex_ops = {
+static const struct clk_ops clk_complex_ops = {
 	.enable = clk_complex_enable,
 	.disable = clk_complex_disable,
 };
@@ -274,7 +274,7 @@ hix5hd2_clk_register_complex(struct hix5hd2_complex_clock *clks, int nums,
 		else
 			init.ops = &clk_complex_ops;
 
-		init.flags = CLK_IS_BASIC;
+		init.flags = 0;
 		init.parent_names =
 			(clks[i].parent_name ? &clks[i].parent_name : NULL);
 		init.num_parents = (clks[i].parent_name ? 1 : 0);
